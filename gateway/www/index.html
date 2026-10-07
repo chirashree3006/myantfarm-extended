@@ -38,6 +38,12 @@ a{color:var(--blue)}
 .pill{font:600 15px var(--display);border:1.5px solid var(--ink);background:transparent;border-radius:999px;padding:8px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
 .pill:hover{background:var(--ink);color:var(--paper)}
 .pill .count{background:var(--pink);color:var(--ink);border-radius:999px;min-width:22px;height:22px;display:inline-grid;place-items:center;font-size:13px;padding:0 6px}
+.online{display:flex;align-items:center;gap:8px;font:600 13px var(--display);color:var(--ink-soft)}
+.online .stack{display:flex}
+.online .stack .avatar{width:24px;height:24px;font-size:11px;border:2px solid var(--paper);margin-left:-7px}
+.online .stack .avatar:first-child{margin-left:0}
+.online .dot{width:8px;height:8px;border-radius:50%;background:#1DB97A;box-shadow:0 0 0 3px rgba(29,185,122,.18)}
+@media(max-width:720px){.online .lbl{display:none}}
 .avatar{width:26px;height:26px;border-radius:50%;background:var(--blue);color:#fff;display:inline-grid;place-items:center;font-size:13px;overflow:hidden}
 .avatar img{width:100%;height:100%;object-fit:cover}
 @media(max-width:720px){.top nav{display:none}.mark{font-size:26px}}
@@ -185,6 +191,7 @@ label.f input{display:block;width:100%;margin-top:5px;border:1.5px solid var(--i
   </a>
   <nav aria-label="Sections"><a href="#drop">This drop</a><a href="#crate">The crate</a><a href="#how">How drops work</a></nav>
   <span class="spacer"></span>
+  <span class="online" id="online" hidden title="Shoppers signed in right now"></span>
   <button class="pill" id="acctBtn" aria-haspopup="true">Sign in</button>
   <button class="pill" id="cartBtn" aria-label="Open cart">Cart <span class="count" id="cartCount">0</span></button>
   <div class="menu" id="menu" role="menu">
@@ -406,10 +413,22 @@ function renderAccount(){
   const b = $('acctBtn');
   if (session){
     const u = session.user, init = (u.name||u.email)[0].toUpperCase();
-    b.innerHTML = `<span class="avatar">${u.picture?`<img src="${esc(u.picture)}" alt="">`:esc(init)}</span>${esc((u.name||u.email).split(' ')[0])}`;
+    b.innerHTML = `<span class="avatar">${u.picture?`<img src="${esc(u.picture)}" alt="" referrerpolicy="no-referrer">`:esc(init)}</span>${esc((u.name||u.email).split(' ')[0])}`;
     $('menuWho').textContent = `${u.email}${u.provider==='google'?' (Google)':''}`;
   } else b.textContent = 'Sign in';
   renderCart();
+}
+
+
+/* ---------- who's signed in right now (shared across every replica) ---------- */
+async function presence(){
+  const r = await api('/api/presence', {method:'POST'});
+  if (!r.ok) return;
+  const el = $('online'), ppl = r.data.people || [];
+  if (!ppl.length){ el.hidden = true; return; }
+  el.hidden = false;
+  const face = p => `<span class="avatar" title="${esc(p.name)}">${p.picture ? `<img src="${esc(p.picture)}" alt="" referrerpolicy="no-referrer">` : esc((p.name||'?')[0].toUpperCase())}</span>`;
+  el.innerHTML = `<span class="dot"></span><span class="stack">${ppl.slice(0,5).map(face).join('')}</span><span class="lbl">${ppl.length} signed in</span>`;
 }
 
 /* ---------- actions ---------- */
@@ -456,7 +475,7 @@ function openAuth(lead){
 function authError(msg){ $('authErr').textContent = msg; $('authErr').hidden = false; }
 function signedIn(data){
   session = data; save('sideb_session', data); $('authDlg').close(); renderAccount();
-  toast(`Signed in as ${data.user.name || data.user.email}`);
+  toast(`Signed in as ${data.user.name || data.user.email}`); presence();
   if (pendingCheckout){ pendingCheckout = false; openCart(); }
 }
 async function submitAuth(e){
@@ -533,7 +552,7 @@ $('heroAdd').onclick = () => add(products[0]?.id);
 $('cartBtn').onclick = openCart; $('closeCart').onclick = closeCart; $('scrim').onclick = closeCart;
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCart(); });
 $('acctBtn').onclick = () => session ? $('menu').classList.toggle('on') : openAuth();
-$('signOutBtn').onclick = () => { session = null; save('sideb_session', null); $('menu').classList.remove('on'); renderAccount(); toast('Signed out'); };
+$('signOutBtn').onclick = () => { if (session) api('/auth/logout', {method:'POST'}); session = null; save('sideb_session', null); $('menu').classList.remove('on'); renderAccount(); toast('Signed out'); };
 $('ordersBtn').onclick = showOrders; $('ordersClose').onclick = () => $('ordersDlg').close();
 $('tabIn').onclick = () => setMode('in'); $('tabUp').onclick = () => setMode('up');
 $('authForm').addEventListener('submit', submitAuth);
@@ -549,6 +568,7 @@ addEventListener('scroll', () => $('top').classList.toggle('scrolled', scrollY >
   if (session){ const me = await api('/auth/me'); if (!me.ok && me.status === 401){ session = null; save('sideb_session', null); } }
   renderAccount();
   await refresh(); setInterval(refresh, 15000);
+  presence(); setInterval(presence, 20000);
 })();
 </script>
 </body>

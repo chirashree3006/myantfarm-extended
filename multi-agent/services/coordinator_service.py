@@ -244,6 +244,8 @@ async def control_surge_stop():
 
 class ExecuteRequest(BaseModel):
     action: str
+    value: int | None = None      # raise_capacity: workers per replica (default 40)
+    on: bool = True               # waiting_room / scale_out: on or off
 
 
 @app.post("/incident/execute")
@@ -255,15 +257,29 @@ async def incident_execute(req: ExecuteRequest):
         if not standby:
             return JSONResponse({"error": "no standby replica configured (web4)"}, status_code=400)
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.post(f"{standby[0]}/admin/standby", json={"on": False})
+            r = await c.post(f"{standby[0]}/admin/standby", json={"on": not req.on})
         result = {"web4": r.json()}
     elif req.action == "raise_capacity":
-        result = await _fan("POST", "/admin/capacity", json={"inflight": 40})
+        result = await _fan("POST", "/admin/capacity", json={"inflight": max(1, min(req.value or 40, 500))})
     elif req.action == "waiting_room":
-        result = await _fan("POST", "/admin/waiting-room", json={"on": True})
+        result = await _fan("POST", "/admin/waiting-room", json={"on": req.on})
     else:
         return JSONResponse({"error": "action must be scale_out, raise_capacity or waiting_room"}, status_code=400)
     return {"action": req.action, "done_at": t0, "result": result}
+
+
+@app.get("/control/logs")
+async def control_logs(instance: str = "web1", limit: int = 15):
+    """Raw server logs of one replica, for the backend console's terminal (what an engineer would tail)."""
+    target = next((t for t in config.DEMO_TARGETS if f"//{instance}:" in t or t.rstrip("/").endswith(instance)), None)
+    if not target:
+        return JSONResponse({"error": f"no such replica: {instance}"}, status_code=404)
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(f"{target}/logs/server", params={"limit": max(1, min(limit, 100))})
+        return {"instance": instance, "records": r.json() if r.status_code == 200 else []}
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"{instance} unreachable ({type(e).__name__})"}, status_code=502)
 
 
 @app.get("/control/live")

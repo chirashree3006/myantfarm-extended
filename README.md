@@ -60,19 +60,23 @@ on the ops console and keep shopping: the load balancer routes around it.
 
 Open **http://localhost/backend/** next to the shop.
 
-1. **Reset everything → Start flash-sale surge.** 150 simulated shoppers hit the shop through the
-   load balancer. Each replica handles 12 requests at a time, so the shop crashes: sign-in in the shop
-   tab shows **"Side B is down"**. The pager fires when more than 20% of requests fail.
-2. **Single agent → Respond.** One TinyLlama call (C2) gives generic advice. You then do 6 manual steps
-   (read logs, find the cause, scale out, raise capacity, waiting room, notify support).
-3. **Reset → Start surge → Multi-agent → Respond.** Four monitor agents run in parallel. The coordinator
-   diagnoses `traffic_surge` and proposes a plan. **Approve and run the plan** (1 click) adds standby
-   replica web4 to the pool, raises capacity 12→40 and turns on the waiting room. Each team gets its own ticket.
-4. The **Scoreboard** compares time to diagnosis, time to recovery, human actions, failed shopper
-   requests and DQ. The % gains are measured on that run, so they change from run to run.
+1. **Reset demo → Start flash sale.** 150 simulated shoppers hit the shop through the load balancer.
+   Each replica handles 12 requests at a time, so the shop crashes: sign-in shows **"Side B is down"**.
+   An alert fires when more than 20% of requests fail.
+2. **Single agent → Acknowledge.** One TinyLlama call (C2) gives a vague answer. You can ask it
+   follow-up questions in the chat, but the fix is manual: use the bastion terminal
+   (`docker stats`, `docker compose logs --tail 15 web1`, `docker compose up -d web4`), edit
+   `deploy/web.env` (`WORKER_CAPACITY=40`, `WAITING_ROOM=on`), save, roll it out with
+   `docker compose up -d web1 web2 web3`, and post a status-page update.
+3. **Reset demo → Start flash sale → Multi-agent → Acknowledge.** Four monitor agents run in parallel.
+   The coordinator diagnoses `traffic_surge`, and **Approve and run 3 actions** (1 click) adds web4,
+   raises capacity 12→40 and turns on the waiting room. Each team gets its own ticket.
+4. **Run comparison** shows time to root cause, time to recovery, manual actions, failed requests and DQ,
+   measured on that run. **Shoppers signed in** lists everyone currently signed in to the shop.
 
 Remediation API: `POST /api/multi/control/surge {"seconds":120,"concurrency":150}`,
-`POST /api/multi/incident/execute {"action":"scale_out"|"raise_capacity"|"waiting_room"}`,
+`POST /api/multi/incident/execute {"action":"scale_out"|"raise_capacity"|"waiting_room", "value":40, "on":true}`,
+`GET /api/multi/control/logs?instance=web1`, `POST /api/single/chat`, `GET /shop-api/api/online`,
 `GET /api/multi/control/live`.
 
 ## Free cloud hosting (no card)

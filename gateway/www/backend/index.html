@@ -3,188 +3,265 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Side B Backend On-call</title>
+<title>sideb-ops · on-call</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0F1226; --panel:#161A33; --panel2:#11142A; --line:#262B4D; --text:#DDE1F2; --dim:#8A90B5;
-    --pink:#FF4F9A; --blue:#6E89FF; --yellow:#FFD23F; --ok:#3DDC97; --bad:#FF5D6C; --warn:#FFB547;
-    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace; --head:'Bricolage Grotesque',system-ui,sans-serif;
+    --bg:#171B24; --panel:#1D222D; --panel2:#151922; --line:#2B3241; --line2:#353D4F;
+    --text:#D8DDE7; --dim:#8D96A8; --faint:#5F6779;
+    --amber:#F0A04B; --red:#E5534B; --green:#3FB68B; --blue:#5B8DEF;
+    --sans:'IBM Plex Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 var(--mono);
-    background-image:radial-gradient(rgba(110,137,255,.07) 1px,transparent 1px);background-size:22px 22px}
-  header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 22px;border-bottom:1px solid var(--line);
-    background:rgba(15,18,38,.94);position:sticky;top:0;z-index:5;flex-wrap:wrap}
-  h1{font:800 20px var(--head);margin:0}
-  h1 span{color:var(--pink)} h1 small{font:500 13px var(--head);color:var(--dim);margin-left:10px}
-  h2{font:800 15px var(--head);margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
-  h2 .hint{font:400 11px var(--mono);color:var(--dim)}
-  main{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;padding:16px 22px 40px;max-width:1560px;margin:0 auto}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
-  .c12{grid-column:span 12}.c8{grid-column:span 8}.c4{grid-column:span 4}.c6{grid-column:span 6}
-  @media(max-width:1050px){.c8,.c4,.c6{grid-column:span 12}}
-  @media(max-width:600px){main{padding:12px 16px 32px}header{padding:12px 16px}}
-  a{color:var(--blue)}
-  .pill{display:inline-block;padding:1px 9px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--dim)}
-  .ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.blue{color:var(--blue)}.pink{color:var(--pink)}.dim{color:var(--dim)}
-  .pill.ok{border-color:rgba(61,220,151,.45)}.pill.bad{border-color:rgba(255,93,108,.5)}
-  button{font:600 12px var(--mono);background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:9px 13px;border-radius:6px;cursor:pointer}
-  button:hover{border-color:var(--blue);color:#fff} button:disabled{opacity:.4;cursor:not-allowed}
-  button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
-  button.primary{background:rgba(255,79,154,.16);border-color:rgba(255,79,154,.65);color:var(--pink)}
-  button.danger{border-color:rgba(255,93,108,.55);color:var(--bad)}
-  button.go{background:rgba(61,220,151,.12);border-color:rgba(61,220,151,.55);color:var(--ok)}
-  input{background:var(--panel2);border:1px solid var(--line);color:var(--text);font:12px var(--mono);padding:7px;width:64px;border-radius:6px}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .grp{border-left:2px solid var(--line);padding-left:12px;margin:4px 16px 4px 0}
-  .grp .lbl{font:600 11px var(--mono);color:var(--dim);margin-bottom:6px}
-  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  .seg button{border:0;border-radius:0;padding:9px 14px}
-  .seg button[aria-pressed=true]{background:var(--blue);color:#0F1226}
-  /* alert banner */
-  #banner{display:none;grid-column:span 12;border:1px solid var(--bad);background:repeating-linear-gradient(135deg,rgba(255,93,108,.14) 0 14px,rgba(255,93,108,.06) 14px 28px);
-    border-radius:8px;padding:14px 16px;align-items:center;gap:16px;flex-wrap:wrap}
-  #banner.on{display:flex}
-  #banner.recovered{border-color:var(--ok);background:rgba(61,220,151,.1)}
-  #banner b{font:800 18px var(--head)}
-  .bigstat{font:800 30px/1 var(--head)}
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px}
-  .stats div{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
-  .stats span{display:block;font-size:10px;color:var(--dim);margin-bottom:4px}
-  #chart{width:100%;height:220px;display:block}
-  .feed{max-height:330px;overflow:auto;display:flex;flex-direction:column;gap:8px}
-  .note{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:6px;padding:8px 10px;font-size:12px}
-  .note.page{border-left-color:var(--bad)} .note.good{border-left-color:var(--ok)} .note.agent{border-left-color:var(--pink)}
-  .note time{color:var(--dim);font-size:10px;display:block}
-  .reps{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
-  .rep{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:10px}
-  .rep.standby{opacity:.55;border-style:dashed} .rep.hot{border-color:var(--bad)}
-  .rep .nm{font:800 16px var(--head);display:flex;justify-content:space-between}
-  .bar{height:9px;background:#20254a;border-radius:4px;overflow:hidden;margin:6px 0}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 var(--sans)}
+  a{color:var(--blue);text-decoration:none} a:hover{text-decoration:underline}
+  .mono{font-family:var(--mono)}
+  .dim{color:var(--dim)} .red{color:var(--red)} .green{color:var(--green)} .amber{color:var(--amber)} .blue{color:var(--blue)}
+
+  /* top bar */
+  .top{display:flex;align-items:center;gap:20px;padding:0 20px;height:48px;border-bottom:1px solid var(--line);background:var(--panel2);position:sticky;top:0;z-index:5}
+  .brand{font:600 14px var(--mono);color:var(--text);display:flex;align-items:center;gap:8px}
+  .brand i{width:10px;height:10px;border-radius:2px;background:var(--amber);display:inline-block}
+  .top nav{display:flex;gap:2px;height:100%}
+  .top nav a{display:flex;align-items:center;padding:0 12px;color:var(--dim);font-size:13px;border-bottom:2px solid transparent}
+  .top nav a.on{color:var(--text);border-bottom-color:var(--amber)} .top nav a:hover{text-decoration:none;color:var(--text)}
+  .spacer{flex:1}
+  .who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--dim)}
+  .who b{color:var(--text);font-weight:500}
+  .conn{font:12px var(--mono);padding:2px 8px;border-radius:3px;border:1px solid var(--line2);color:var(--dim)}
+  .conn.ok{color:var(--green);border-color:rgba(63,182,139,.4)} .conn.bad{color:var(--red);border-color:rgba(229,83,75,.5)}
+  @media(max-width:760px){.top nav{display:none}.who span{display:none}}
+
+  main{max-width:1500px;margin:0 auto;padding:16px 20px 48px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px}
+  @media(max-width:1080px){main{grid-template-columns:minmax(0,1fr)}}
+  @media(max-width:600px){main{padding:12px 16px 40px}.top{padding:0 16px}}
+  .full{grid-column:1/-1}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;min-width:0}
+  .card>header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:11px 14px;border-bottom:1px solid var(--line)}
+  .card>header h2{margin:0;font:600 13px var(--sans);letter-spacing:.01em}
+  .card>header small{color:var(--faint);font-size:12px}
+  .body{padding:14px}
+  .side{display:flex;flex-direction:column;gap:16px;min-width:0}
+
+  button{font:500 13px var(--sans);background:#252B38;color:var(--text);border:1px solid var(--line2);padding:7px 12px;border-radius:4px;cursor:pointer}
+  button:hover:not(:disabled){border-color:#4A5468;background:#2A3140}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+  button.prim{background:var(--amber);border-color:var(--amber);color:#1A1306;font-weight:600}
+  button.prim:hover:not(:disabled){background:#F5B064;border-color:#F5B064}
+  button.ok{background:rgba(63,182,139,.14);border-color:rgba(63,182,139,.55);color:var(--green)}
+  button.warnb{color:var(--red);border-color:rgba(229,83,75,.45)}
+  input,textarea{background:var(--panel2);border:1px solid var(--line2);color:var(--text);font:13px var(--mono);padding:6px 8px;border-radius:4px}
+  input[type=number]{width:72px}
+  label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .seg{display:flex;border:1px solid var(--line2);border-radius:4px;overflow:hidden}
+  .seg button{border:0;border-radius:0;flex:1;background:transparent}
+  .seg button[aria-pressed=true]{background:#2F3747;color:#fff;box-shadow:inset 0 -2px 0 var(--amber)}
+
+  /* incident strip */
+  #inc{display:none;align-items:center;gap:16px;padding:12px 16px;border:1px solid rgba(229,83,75,.55);border-left:4px solid var(--red);background:#2A1E22;border-radius:6px;flex-wrap:wrap}
+  #inc.on{display:flex}
+  #inc.res{border-color:rgba(63,182,139,.5);border-left-color:var(--green);background:#1B2A26}
+  .sev{font:600 12px var(--mono);padding:2px 7px;border-radius:3px;background:var(--red);color:#fff}
+  #inc.res .sev{background:var(--green);color:#0E1A15}
+  #incTitle{font-weight:600;font-size:15px}
+  #incText{color:var(--dim);font-size:13px}
+  #incTimer{font:600 22px var(--mono);margin-left:auto}
+
+  /* metrics */
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+  .metrics div{padding:10px 14px;border-right:1px solid var(--line)} .metrics div:last-child{border-right:0}
+  .metrics span{display:block;font-size:12px;color:var(--dim)}
+  .metrics b{font:500 24px/1.3 var(--mono)}
+  @media(max-width:600px){.metrics{grid-template-columns:repeat(2,1fr)}.metrics div:nth-child(2){border-right:0}}
+  .legend{display:flex;gap:16px;font-size:12px;color:var(--dim);padding:10px 14px 0}
+  .legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:6px}
+  #chart{width:100%;height:210px;display:block}
+
+  /* pager */
+  .feed{max-height:300px;overflow:auto}
+  .ev{padding:9px 14px;border-bottom:1px solid var(--line);font-size:13px}
+  .ev:last-child{border-bottom:0}
+  .ev .meta{font:11px var(--mono);color:var(--faint);display:flex;gap:8px}
+  .ev.fire .meta .src{color:var(--red)} .ev.good .meta .src{color:var(--green)} .ev.bot .meta .src{color:var(--blue)}
+
+  /* replicas */
+  .reps{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:var(--line)}
+  .rep{background:var(--panel);padding:12px 14px}
+  .rep.standby{background:var(--panel2)}
+  .rep .nm{display:flex;justify-content:space-between;align-items:center;font:600 14px var(--mono)}
+  .tag{font:500 11px var(--mono);padding:1px 6px;border-radius:3px;border:1px solid}
+  .tag.g{color:var(--green);border-color:rgba(63,182,139,.45)} .tag.r{color:var(--red);border-color:rgba(229,83,75,.5)} .tag.d{color:var(--faint);border-color:var(--line2)}
+  .bar{height:6px;background:#2A303D;border-radius:3px;overflow:hidden;margin:8px 0}
   .bar>i{display:block;height:100%;transition:width .4s}
-  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}.kv b{color:var(--dim);font-weight:400}
-  .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-  .steps li{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:10px;display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:start}
-  .steps li ul{margin:6px 0 0;padding-left:4px;list-style:none}
-  .steps li ul li{display:block;background:none;border:0;padding:2px 0;border-radius:0}
-  .steps li .ix{font:800 15px var(--head);color:var(--dim)}
-  .steps li.done{border-color:rgba(61,220,151,.45)} .steps li.done .ix{color:var(--ok)}
-  .steps li .who{font-size:10px;color:var(--blue)}
-  .steps li .t{font-size:11px;color:var(--dim);white-space:nowrap}
-  pre{white-space:pre-wrap;word-break:break-word;background:var(--panel2);border:1px solid var(--line);padding:10px;border-radius:6px;margin:8px 0;max-height:220px;overflow:auto;font-size:12px}
-  code{color:var(--yellow)}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)} th{color:var(--dim);font-weight:400;font-size:11px}
-  td.win{color:var(--ok);font-weight:600}
-  .gain{font:800 26px var(--head);color:var(--ok)}
-  .spin{display:inline-block;width:10px;height:10px;border:2px solid var(--pink);border-right-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:-1px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;font:12px var(--mono)} .kv b{color:var(--faint);font-weight:400}
+
+  /* workspace */
+  .ans{border:1px solid var(--line);border-radius:4px;background:var(--panel2)}
+  .ans .h{padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--dim);display:flex;justify-content:space-between;gap:8px}
+  .ans pre{margin:0;padding:12px;white-space:pre-wrap;word-break:break-word;font:13px/1.55 var(--mono);max-height:260px;overflow:auto}
+  .chat{display:flex;flex-direction:column;gap:8px;padding:12px;border-top:1px solid var(--line);max-height:320px;overflow:auto}
+  .msg{max-width:88%;padding:8px 11px;border-radius:6px;font-size:13px;white-space:pre-wrap;word-break:break-word}
+  .msg.me{align-self:flex-end;background:#2B3447}
+  .msg.bot{align-self:flex-start;background:#20252F;border:1px solid var(--line);font-family:var(--mono);font-size:12.5px}
+  .ask{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+  .ask input{flex:1;font-family:var(--sans)}
+  .split{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px;margin-top:14px}
+  @media(max-width:900px){.split{grid-template-columns:minmax(0,1fr)}}
+  .tabs{display:flex;border-bottom:1px solid var(--line);background:var(--panel2)}
+  .tabs button{border:0;border-radius:0;background:transparent;color:var(--dim);font:12px var(--mono);padding:8px 12px;border-right:1px solid var(--line)}
+  .tabs button[aria-selected=true]{color:var(--text);background:#0F1218}
+  .term{background:#0F1218;font:12.5px/1.5 var(--mono);height:340px;overflow:auto;padding:10px 12px;cursor:text}
+  .term .l{white-space:pre-wrap;word-break:break-word}
+  .term .p{color:var(--green)} .term .e{color:var(--red)} .term .w{color:var(--amber)} .term .c{color:var(--faint)}
+  .term .in{display:flex;gap:8px} .term .in input{flex:1;background:transparent;border:0;padding:0;color:var(--text);font:inherit;outline:none}
+  .editor{display:flex;flex-direction:column;height:340px;background:#0F1218}
+  .editor[hidden]{display:none}
+  .editor textarea{flex:1;border:0;border-radius:0;background:#0F1218;resize:none;padding:10px 12px;font:12.5px/1.6 var(--mono);color:#C9D1DE;outline:none}
+  .editor .bar2{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 10px;border-top:1px solid var(--line);font:12px var(--mono);color:var(--dim)}
+  details.rb{margin-top:10px;font-size:13px;color:var(--dim)} details.rb summary{cursor:pointer;color:var(--text)}
+  details.rb code{font:12px var(--mono);color:#C9D1DE;background:#0F1218;padding:1px 5px;border-radius:3px}
+  details.rb ol{margin:8px 0 0;padding-left:20px} details.rb li{margin:3px 0}
+  .plan{list-style:none;margin:10px 0 0;padding:0;border:1px solid var(--line);border-radius:4px}
+  .plan li{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line);align-items:start;font-size:13px}
+  .plan li:last-child{border-bottom:0}
+  .plan .own{font:12px var(--mono);color:var(--blue)}
+  .plan code{font:12px var(--mono);color:var(--dim);display:block;margin-top:2px}
+  .plan .st{font:12px var(--mono);color:var(--faint);white-space:nowrap}
+  .plan li.done .st{color:var(--green)}
+  @media(max-width:600px){.plan li{grid-template-columns:minmax(0,1fr)}}
+  .tix{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:12px}
+  .tix div{border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:12px;background:var(--panel2)}
+  .tix b{font-size:13px}
+  .spin{display:inline-block;width:10px;height:10px;border:2px solid var(--amber);border-right-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:-1px}
   @keyframes s{to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion:reduce){.spin{animation:none}}
-  .how{font-size:12px;color:var(--dim)} .how b{color:var(--text)}
-  .tickets{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:10px}
-  .ticket{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px}
-  .ticket b{font:800 13px var(--head)}
+
+  /* online */
+  .ppl{display:flex;flex-direction:column}
+  .ppl div{display:flex;align-items:center;gap:10px;padding:7px 14px;border-bottom:1px solid var(--line);font-size:13px}
+  .ppl div:last-child{border-bottom:0}
+  .av{width:24px;height:24px;border-radius:50%;background:#2F3747;display:grid;place-items:center;font-size:11px;overflow:hidden;flex:none}
+  .av img{width:100%;height:100%;object-fit:cover}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500;font-size:12px} td{font-family:var(--mono);font-size:12.5px} td:first-child{font-family:var(--sans);font-size:13px}
+  .gains{display:flex;gap:32px;flex-wrap:wrap;padding:14px}
+  .gains b{font:600 26px var(--mono);color:var(--green);display:block}
+  .gains span{font-size:12px;color:var(--dim)}
 </style>
 </head>
 <body>
-<header>
-  <h1><span>Side B</span> backend on-call <small>you are the backend designer</small></h1>
-  <div class="row">
-    <a class="pill" href="/" target="_blank" rel="noopener">Open the shop</a>
-    <a class="pill" href="/ops/" target="_blank" rel="noopener">Ops console</a>
-    <span class="pill" id="state">checking…</span>
-  </div>
-</header>
+<div class="top">
+  <span class="brand"><i></i>sideb-ops</span>
+  <nav aria-label="Sections"><a href="/ops/">Overview</a><a class="on" href="/backend/">Incidents</a><a href="/" target="_blank" rel="noopener">Storefront ↗</a></nav>
+  <span class="spacer"></span>
+  <span class="who"><span>primary on-call</span><b>backend</b></span>
+  <span class="conn" id="conn">connecting</span>
+</div>
 
 <main>
-  <section class="panel c12">
-    <div class="row">
-      <div class="grp"><div class="lbl">1. Cause the incident</div>
-        <div class="row">
-          <label class="dim">shoppers <input id="conc" type="number" value="150" min="10" max="200"></label>
-          <label class="dim">seconds <input id="secs" type="number" value="150" min="30" max="600"></label>
-          <button class="danger" id="surgeBtn">Start flash-sale surge</button>
-        </div></div>
-      <div class="grp"><div class="lbl">2. Choose how the backend team responds</div>
-        <div class="seg" role="group" aria-label="Response mode">
-          <button id="mSingle" aria-pressed="true">Single agent</button>
-          <button id="mMulti" aria-pressed="false">Multi-agent</button>
-        </div></div>
-      <div class="grp"><div class="lbl">3. Respond when paged</div>
-        <div class="row"><button class="primary" id="respondBtn" disabled>Respond to the incident</button>
-        <button id="resetBtn">Reset everything</button></div></div>
-    </div>
-    <p class="how" style="margin:12px 0 0">Run it twice for the comparison: <b>Reset → Start surge → wait for the page → Single agent → Respond</b>, then <b>Reset → Start surge → Multi-agent → Respond</b>. The scoreboard at the bottom fills in from what is measured live.</p>
-  </section>
-
-  <div id="banner" role="alert">
-    <div><b id="bTitle">Paged: Side B is down</b><div id="bText" class="dim"></div></div>
-    <div class="bigstat bad" id="bTimer">0:00</div>
+  <div id="inc" class="full" role="alert">
+    <span class="sev" id="incSev">SEV-1</span>
+    <div><div id="incTitle"></div><div id="incText"></div></div>
+    <span id="incTimer">0:00</span>
   </div>
 
-  <section class="panel c8">
-    <h2>Live traffic <span class="hint">requests per second (blue) and share failing (pink), last 3 minutes</span></h2>
-    <div class="stats">
-      <div><span>requests / s</span><b class="bigstat blue" id="sRps">0</b></div>
-      <div><span>failing now</span><b class="bigstat" id="sFail">0%</b></div>
-      <div><span>in flight / capacity</span><b class="bigstat" id="sCap">0 / 0</b></div>
-      <div><span>shoppers failed</span><b class="bigstat" id="sRej">0</b></div>
+  <section class="card">
+    <header><h2>web-tier · production</h2><small>last 3 min, 1 s resolution</small></header>
+    <div class="metrics">
+      <div><span>requests/s</span><b class="blue" id="sRps">0</b></div>
+      <div><span>error rate (5xx)</span><b id="sFail">0%</b></div>
+      <div><span>workers busy</span><b id="sCap">0 / 0</b></div>
+      <div><span>failed requests</span><b id="sRej">0</b></div>
     </div>
-    <svg id="chart" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label="Requests per second and share failing over time"></svg>
+    <div class="legend"><span><i style="background:var(--blue)"></i>requests/s (left axis)</span><span><i style="background:var(--red)"></i>error rate % (right axis)</span></div>
+    <svg id="chart" viewBox="0 0 800 210" preserveAspectRatio="none" role="img" aria-label="Requests per second and error rate over the last 3 minutes"></svg>
   </section>
 
-  <section class="panel c4">
-    <h2>Pager <span class="hint">what the backend team receives</span></h2>
-    <div class="feed" id="feed"><div class="note"><time>now</time>Quiet. Start a surge to cause an incident.</div></div>
-  </section>
+  <div class="side">
+    <section class="card">
+      <header><h2>Load test</h2><small>flash-sale simulator</small></header>
+      <div class="body">
+        <div class="row">
+          <label class="f">shoppers<input id="conc" type="number" value="150" min="10" max="200"></label>
+          <label class="f">duration (s)<input id="secs" type="number" value="150" min="30" max="600"></label>
+          <button class="warnb" id="surgeBtn">Start flash sale</button>
+        </div>
+        <div style="margin-top:14px" class="f dim" id="respLbl">Responder</div>
+        <div class="seg" role="group" aria-labelledby="respLbl" style="margin-top:4px">
+          <button id="mSingle" aria-pressed="true">Single agent</button>
+          <button id="mMulti" aria-pressed="false">Multi-agent</button>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="prim" id="respondBtn" disabled>Acknowledge</button>
+          <button id="resetBtn">Reset demo</button>
+        </div>
+      </div>
+    </section>
+    <section class="card">
+      <header><h2>Pager</h2><small id="pgCount">0 alerts</small></header>
+      <div class="feed" id="feed"><div class="ev"><div class="meta"><span>—</span></div><span class="dim">No alerts.</span></div></div>
+    </section>
+  </div>
 
-  <section class="panel c12">
-    <h2>Store replicas behind the load balancer <span class="hint">web4 is a standby that joins the pool on scale-out</span></h2>
+  <section class="card full">
+    <header><h2>Replicas behind the load balancer</h2><small>nginx least_conn · web4 is a cold standby</small></header>
     <div class="reps" id="reps"></div>
   </section>
 
-  <section class="panel c12">
-    <h2 id="wsTitle">Response <span class="hint" id="wsHint">waiting for an incident</span></h2>
-    <div id="workspace" class="dim">When the pager fires, click <b>Respond to the incident</b>. In single-agent mode you get one generic answer and do the work yourself; in multi-agent mode the agents diagnose, split the work by team and run the fix after one approval.</div>
+  <section class="card full">
+    <header><h2 id="wsTitle">Incident response</h2><small id="wsHint">nothing open</small></header>
+    <div class="body" id="workspace"><span class="dim">No open incident.</span></div>
   </section>
 
-  <section class="panel c12">
-    <h2>Scoreboard <span class="hint">measured on this page; run both modes to compare</span></h2>
+  <section class="card" id="scoreCard">
+    <header><h2>Run comparison</h2><small>measured on this page</small></header>
     <div id="score"></div>
+  </section>
+
+  <section class="card">
+    <header><h2>Shoppers signed in</h2><small id="pplCount">—</small></header>
+    <div class="ppl" id="ppl"><div class="dim">Nobody signed in.</div></div>
   </section>
 </main>
 
 <script>
-const API = '/api/multi', SAPI = '/api/single';
+const API = '/api/multi', SAPI = '/api/single', SHOP = '/shop-api';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const secs = ms => (ms/1000).toFixed(1) + ' s';
-let mode = 'single', hist = [], marks = [], prev = null, okStreak = 0;
-let inc = null;              // current incident run
-const runs = {};             // finished/ongoing runs per mode
-const H = 180;               // seconds of history
+const hhmmss = (d = new Date()) => d.toTimeString().slice(0, 8);
+let mode = 'single', hist = [], marks = [], prev = null, okStreak = 0, alerts = 0, live = null;
+let inc = null;
+const runs = {};
+const H = 180;
 
 async function call(url, body) {
   const r = await fetch(url, {method: body !== undefined ? 'POST' : 'GET', headers:{'Content-Type':'application/json'},
     body: body !== undefined ? JSON.stringify(body) : undefined});
-  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0,140));
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0,160));
   return r.json();
 }
-function note(text, kind=''){
-  const d = document.createElement('div'); d.className = 'note ' + kind;
-  d.innerHTML = `<time>${new Date().toLocaleTimeString()}${inc?.alertAt ? ' · +' + secs(Date.now()-inc.alertAt) : ''}</time>${text}`;
-  const f = $('feed'); if (f.children.length === 1 && f.children[0].textContent.includes('Quiet')) f.innerHTML = '';
+function page(src, html, kind=''){
+  const f = $('feed'); if (!alerts) f.innerHTML = '';
+  alerts++; $('pgCount').textContent = alerts + (alerts === 1 ? ' event' : ' events');
+  const d = document.createElement('div'); d.className = 'ev ' + kind;
+  d.innerHTML = `<div class="meta"><span>${hhmmss()}</span><span class="src">${esc(src)}</span>${inc?.alertAt ? `<span>T+${secs(Date.now()-inc.alertAt)}</span>` : ''}</div>${html}`;
   f.prepend(d);
 }
 function mark(label, color){ marks.push({t: Date.now(), label, color}); }
-function since(t){ return inc?.alertAt ? secs(t - inc.alertAt) : '—'; }
+function since(t){ return inc?.alertAt ? 'T+' + secs(t - inc.alertAt) : '—'; }
+function act(){ if (inc) inc.actions++; }
 
 /* ---------------- live polling ---------------- */
 async function poll(){
-  let L; try { L = await call(API + '/control/live'); $('state').textContent = 'live'; $('state').className = 'pill ok'; }
-  catch(e){ $('state').textContent = 'backend unreachable'; $('state').className = 'pill bad'; return; }
+  let L; try { L = await call(API + '/control/live'); $('conn').textContent = 'live'; $('conn').className = 'conn ok'; }
+  catch(e){ $('conn').textContent = 'api unreachable'; $('conn').className = 'conn bad'; return; }
+  live = L;
   const now = Date.now();
   let failPct = 0;
   if (prev){
@@ -196,32 +273,33 @@ async function poll(){
   marks = marks.filter(m => now - m.t < H*1000);
   const smooth = hist.slice(-3).reduce((a,p)=>a+p.fail,0) / Math.min(3, hist.length);
   $('sRps').textContent = L.rps.toFixed(0);
-  $('sFail').textContent = smooth.toFixed(0) + '%'; $('sFail').className = 'bigstat ' + (smooth > 20 ? 'bad' : smooth > 5 ? 'warn' : 'ok');
+  $('sFail').textContent = smooth.toFixed(0) + '%'; $('sFail').className = smooth > 20 ? 'red' : smooth > 5 ? 'amber' : 'green';
   $('sCap').textContent = `${L.inflight} / ${L.capacity}`;
   $('sRej').textContent = L.rejected;
   renderReps(L); drawChart();
 
-  // detection: the backend team gets paged
   const surging = L.replicas.some(r => r.fault_mode === 'surge');
   if (!inc && surging && smooth > 20 && hist.length > 3){
-    inc = {mode: null, alertAt: now, rejAtAlert: L.rejected, actions: 0, teams: 0};
-    mark('paged', '#FF5D6C');
-    $('banner').className = 'on'; $('bTitle').textContent = 'Paged: Side B is down for shoppers';
-    $('bText').textContent = `${L.rps.toFixed(0)} requests/s (normal is under 5), ${smooth.toFixed(0)}% of requests failing on ${L.replicas.filter(r=>!r.standby && !r.down).length} replicas.`;
-    note(`<b class="bad">PAGE · Backend on-call</b><br>Traffic ${L.rps.toFixed(0)} req/s, ${smooth.toFixed(0)}% failing. Sign-ins and checkouts are returning "Side B is down".`, 'page');
-    try { if (Notification?.permission === 'granted') new Notification('Side B: backend on-call paged', {body: `${smooth.toFixed(0)}% of requests failing`}); } catch {}
+    inc = {id: 'INC-' + (2000 + Math.floor(Math.random()*900)), mode: null, alertAt: now, rejAtAlert: L.rejected, actions: 0, teams: 0};
+    mark('alert', '#E5534B');
+    $('inc').className = 'full on'; $('incSev').textContent = 'SEV-1';
+    $('incTitle').textContent = `${inc.id} · Storefront returning 503 to shoppers`;
+    $('incText').textContent = `web-tier 5xx at ${smooth.toFixed(0)}% (threshold 20%), ${L.rps.toFixed(0)} req/s against a normal of under 5. Sign-in and checkout affected.`;
+    page('alertmanager', `<b class="red">[FIRING] HighErrorRate</b> web-tier 5xx ${smooth.toFixed(0)}% &gt; 20% · ${L.rps.toFixed(0)} req/s`, 'fire');
+    try { if (Notification?.permission === 'granted') new Notification(`${inc.id}: storefront down`, {body: `${smooth.toFixed(0)}% of requests failing`}); } catch {}
     $('respondBtn').disabled = false;
+    $('wsHint').textContent = `${inc.id} · not acknowledged`;
   }
   if (inc && !inc.recoveredAt){
-    $('bTimer').textContent = fmtClock(now - inc.alertAt);
+    $('incTimer').textContent = fmtClock(now - inc.alertAt);
     if (inc.respondAt && smooth < 5 && L.rps > 10) okStreak++; else okStreak = 0;
     if (okStreak >= 5){
       inc.recoveredAt = now; inc.failedShoppers = L.rejected - inc.rejAtAlert;
-      mark('recovered', '#3DDC97');
-      $('banner').className = 'on recovered'; $('bTitle').textContent = 'Recovered';
-      $('bText').textContent = `Failures under 5% while ${L.rps.toFixed(0)} req/s keep coming. Time to recovery ${secs(now - inc.alertAt)}.`;
-      $('bTimer').className = 'bigstat ok';
-      note(`<b class="ok">Recovered</b> in ${secs(now - inc.alertAt)} (${inc.mode === 'multi' ? 'multi-agent' : 'single agent'}). ${inc.failedShoppers} shopper requests failed during the incident.`, 'good');
+      mark('resolved', '#3FB68B');
+      $('inc').className = 'full on res'; $('incSev').textContent = 'RESOLVED';
+      $('incTitle').textContent = `${inc.id} · Storefront serving again`;
+      $('incText').textContent = `Error rate under 5% with ${L.rps.toFixed(0)} req/s still coming in. Open for ${secs(now - inc.alertAt)}.`;
+      page('alertmanager', `<b class="green">[RESOLVED] HighErrorRate</b> after ${secs(now - inc.alertAt)} · ${inc.failedShoppers} failed requests`, 'good');
       if (inc.mode) { runs[inc.mode] = {...inc}; renderScore(); }
     }
   }
@@ -230,29 +308,44 @@ function fmtClock(ms){ const s = Math.floor(ms/1000); return `${Math.floor(s/60)
 
 function renderReps(L){
   $('reps').innerHTML = L.replicas.map(r => {
-    if (r.down) return `<div class="rep hot"><div class="nm">${esc(r.instance)}<span class="bad">down</span></div><div class="dim">unreachable</div></div>`;
+    if (r.down) return `<div class="rep"><div class="nm">${esc(r.instance)}<span class="tag r">down</span></div><div class="dim mono" style="font-size:12px;margin-top:8px">unreachable</div></div>`;
     const pct = r.capacity ? Math.min(100, 100 * r.inflight / r.capacity) : 0;
-    const hot = !r.standby && pct >= 100;
-    const state = r.standby ? '<span class="dim">standby</span>' : hot ? '<span class="bad">saturated</span>' : '<span class="ok">serving</span>';
-    return `<div class="rep ${r.standby?'standby':''} ${hot?'hot':''}"><div class="nm">${esc(r.instance)}${state}</div>
-      <div class="bar"><i style="width:${r.standby?0:pct}%;background:${pct>=100?'var(--bad)':pct>=70?'var(--warn)':'var(--ok)'}"></i></div>
-      <div class="kv"><b>workers</b><span>${r.inflight} / ${r.capacity} busy</span><b>req/s</b><span>${r.rps}</span>
-      <b>rejected</b><span class="${r.rejected?'bad':''}">${r.rejected}</span><b>queued</b><span>${r.queued}${r.waiting_room?' <span class="blue">(waiting room on)</span>':''}</span></div></div>`;
+    const hot = !r.standby && (pct >= 100 || (r.fault_mode === 'surge' && r.rps > r.capacity * 2));
+    const tag = r.standby ? '<span class="tag d">standby</span>' : hot ? '<span class="tag r">saturated</span>' : '<span class="tag g">healthy</span>';
+    return `<div class="rep ${r.standby?'standby':''}"><div class="nm">${esc(r.instance)}${tag}</div>
+      <div class="bar"><i style="width:${r.standby?0:pct}%;background:${pct>=100?'var(--red)':pct>=70?'var(--amber)':'var(--green)'}"></i></div>
+      <div class="kv"><b>workers</b><span>${r.inflight}/${r.capacity}</span><b>req/s</b><span>${r.rps}</span>
+      <b>503s</b><span class="${r.rejected?'red':''}">${r.rejected}</span><b>queued</b><span>${r.queued}${r.waiting_room?' <span class="blue">waiting room</span>':''}</span></div></div>`;
   }).join('');
 }
 
 function drawChart(){
-  const W = 800, Hh = 220, pad = 24, now = Date.now(), t0 = now - H*1000;
+  const W = 800, Hh = 210, pl = 44, pr = 40, pt = 12, pb = 20, now = Date.now(), t0 = now - H*1000;
   const maxR = Math.max(50, ...hist.map(p => p.rps)) * 1.1;
-  const x = t => pad + (t - t0) / (H*1000) * (W - 2*pad);
-  const yR = v => Hh - pad - v / maxR * (Hh - 2*pad), yF = v => Hh - pad - v / 100 * (Hh - 2*pad);
+  const x = t => pl + (t - t0) / (H*1000) * (W - pl - pr);
+  const yR = v => Hh - pb - v / maxR * (Hh - pt - pb), yF = v => Hh - pb - v / 100 * (Hh - pt - pb);
   const line = (k, y) => hist.map((p,i) => `${i?'L':'M'}${x(p.t).toFixed(1)} ${y(p[k]).toFixed(1)}`).join('');
   let g = '';
-  for (let i = 0; i <= 4; i++){ const yy = pad + i*(Hh-2*pad)/4; g += `<line x1="${pad}" x2="${W-pad}" y1="${yy}" y2="${yy}" stroke="#262B4D"/>`; }
-  g += `<text x="${pad}" y="14" fill="#8A90B5" font-size="11">${maxR.toFixed(0)} req/s</text><text x="${W-pad}" y="14" fill="#FF4F9A" font-size="11" text-anchor="end">100% failing</text>`;
-  marks.forEach((m, i) => { const xx = x(m.t); g += `<line x1="${xx}" x2="${xx}" y1="${pad}" y2="${Hh-pad}" stroke="${m.color}" stroke-dasharray="4 4"/><text x="${xx+4}" y="${pad + 14 + (i % 6) * 14}" fill="${m.color}" font-size="11">${esc(m.label)}</text>`; });
-  g += `<path d="${line('rps', yR)}" fill="none" stroke="#6E89FF" stroke-width="2"/><path d="${line('fail', yF)}" fill="none" stroke="#FF4F9A" stroke-width="2"/>`;
+  for (let i = 0; i <= 4; i++){
+    const f = i / 4, yy = Hh - pb - f * (Hh - pt - pb);
+    g += `<line x1="${pl}" x2="${W-pr}" y1="${yy}" y2="${yy}" stroke="#2B3241"/>`;
+    g += `<text x="${pl-6}" y="${yy+4}" fill="#5B8DEF" font-size="10" text-anchor="end" font-family="IBM Plex Mono">${Math.round(maxR*f)}</text>`;
+    g += `<text x="${W-pr+6}" y="${yy+4}" fill="#E5534B" font-size="10" font-family="IBM Plex Mono">${i*25}%</text>`;
+  }
+  g += `<text x="${W-pr}" y="${Hh-4}" fill="#5F6779" font-size="10" text-anchor="end" font-family="IBM Plex Mono">now</text><text x="${pl}" y="${Hh-4}" fill="#5F6779" font-size="10" font-family="IBM Plex Mono">−3 min</text>`;
+  marks.forEach((m, i) => { const xx = x(m.t); g += `<line x1="${xx}" x2="${xx}" y1="${pt}" y2="${Hh-pb}" stroke="${m.color}" stroke-dasharray="3 4"/><text x="${xx+4}" y="${pt + 12 + (i % 5) * 13}" fill="${m.color}" font-size="10" font-family="IBM Plex Mono">${esc(m.label)}</text>`; });
+  g += `<path d="${line('rps', yR)}" fill="none" stroke="#5B8DEF" stroke-width="1.8"/><path d="${line('fail', yF)}" fill="none" stroke="#E5534B" stroke-width="1.8"/>`;
   $('chart').innerHTML = g;
+}
+
+async function pollPeople(){
+  try {
+    const r = await call(SHOP + '/api/online'), ppl = r.people || [];
+    $('pplCount').textContent = ppl.length ? `${ppl.length} now` : 'none';
+    $('ppl').innerHTML = ppl.length ? ppl.map(p => `<div><span class="av">${p.picture ? `<img src="${esc(p.picture)}" alt="" referrerpolicy="no-referrer">` : esc((p.name||'?')[0].toUpperCase())}</span>
+      <span style="flex:1">${esc(p.name)}</span><span class="dim mono" style="font-size:11px">${p.provider === 'google' ? 'google' : 'email'} · ${p.seen_s_ago}s</span></div>`).join('')
+      : '<div class="dim">Nobody signed in.</div>';
+  } catch {}
 }
 
 /* ---------------- controls ---------------- */
@@ -264,144 +357,255 @@ $('surgeBtn').onclick = async () => {
   $('surgeBtn').disabled = true;
   try {
     await call(API + '/control/surge', {seconds: +$('secs').value, concurrency: +$('conc').value});
-    mark('surge', '#FFB547');
-    note(`<b class="warn">Flash-sale drop opened</b>: ${$('conc').value} shoppers hammering sign-in, catalogue and checkout.`);
-  } catch(e){ note('Could not start the surge: ' + esc(e.message), 'page'); $('surgeBtn').disabled = false; }
+    mark('sale opens', '#F0A04B');
+    page('load-test', `Flash sale started: ${esc($('conc').value)} shoppers for ${esc($('secs').value)} s`);
+  } catch(e){ page('load-test', 'Could not start: ' + esc(e.message), 'fire'); $('surgeBtn').disabled = false; }
 };
 
 $('resetBtn').onclick = async () => {
   try { await call(API + '/control/surge/stop', {}); await call(API + '/control/reset', {}); } catch(e){}
-  inc = null; okStreak = 0; marks = []; $('banner').className = ''; $('bTimer').className = 'bigstat bad';
+  inc = null; okStreak = 0; marks = []; $('inc').className = 'full';
   $('respondBtn').disabled = true; $('surgeBtn').disabled = false;
-  $('workspace').innerHTML = '<span class="dim">Reset. Start a surge for the next run.</span>'; $('wsHint').textContent = 'waiting for an incident';
-  note('Reset: surge stopped, replicas back to 12 workers, web4 back on standby, waiting room off.');
+  $('wsTitle').textContent = 'Incident response'; $('wsHint').textContent = 'nothing open';
+  $('workspace').innerHTML = '<span class="dim">No open incident.</span>';
+  page('ops', 'Demo reset: load stopped, 12 workers per replica, web4 back on standby, waiting room off.');
 };
 
 $('respondBtn').onclick = () => {
   if (!inc || inc.respondAt) return;
   inc.mode = mode; inc.respondAt = Date.now(); runs[mode] = inc;
   $('respondBtn').disabled = true;
-  mark(mode === 'multi' ? 'multi-agent responds' : 'single agent responds', '#6E89FF');
+  mark(mode === 'multi' ? 'ack (multi)' : 'ack (single)', '#5B8DEF');
+  page('pager', `Acknowledged by backend on-call · responder: ${mode === 'multi' ? 'multi-agent' : 'single agent'}`);
   mode === 'multi' ? respondMulti() : respondSingle();
 };
 
-async function execute(action){
-  const r = await call(API + '/incident/execute', {action});
-  const msg = {scale_out: 'web4 joined the load-balancer pool (scale-out)', raise_capacity: 'Worker capacity raised to 40 on every replica',
-               waiting_room: 'Waiting room on: extra shoppers queue instead of failing'}[action];
-  note(`<b class="ok">Done</b> · ${msg}`, 'good'); mark(action.replace('_', ' '), '#3DDC97');
+async function execute(action, extra = {}){
+  const r = await call(API + '/incident/execute', {action, ...extra});
+  const msg = {scale_out: 'web4 added to the load-balancer pool', raise_capacity: `worker capacity set to ${extra.value ?? 40} on every replica`,
+               waiting_room: extra.on === false ? 'waiting room turned off' : 'waiting room on: overflow queues instead of failing'}[action];
+  page('deploy', msg, 'good'); mark(action.replace('_', ' '), '#3FB68B');
   return r;
 }
 
-/* ---------------- single agent: one answer, you do the rest ---------------- */
-const MANUAL = [
-  {k:'logs', who:'You (backend)', text:'Read the logs on each of the 4 replicas to find out what is failing.', btn:'Done reading logs'},
-  {k:'cause', who:'You (backend)', text:'Work out the cause from the logs: requests are rejected because workers are full during a traffic spike.', btn:"I've found the cause"},
-  {k:'scale_out', who:'You → SRE', text:'Scale out: activate the standby replica web4 in the load-balancer pool.', btn:'Run scale-out', exec:true},
-  {k:'raise_capacity', who:'You → Backend', text:'Raise worker capacity on every replica from 12 to 40.', btn:'Raise capacity', exec:true},
-  {k:'waiting_room', who:'You → Frontend', text:'Turn on the waiting room so the rest of the surge queues.', btn:'Turn on waiting room', exec:true},
-  {k:'support', who:'You → Support', text:'Write and send the status-page message for customers.', btn:'Message sent'},
-];
+/* ================= single agent: vague answer, then you fix it by hand ================= */
+const ENV_DEFAULT = `# deploy/web.env: shared by web1..web4
+SERVICE=web-tier
+DEPLOY_VERSION=v2.3.0
+
+# max requests a replica works on at once; extra requests get a 503
+WORKER_CAPACITY=12
+
+# on: shoppers over capacity wait in a queue (429 + auto-retry) instead of a 503
+WAITING_ROOM=off
+
+DB_POOL_SIZE=10
+`;
+let env = {saved: ENV_DEFAULT, deployed: {cap: 12, wr: false}}, chatLog = [], termHist = [], termIdx = 0, scaled = false;
+const parseEnv = t => ({cap: +(t.match(/^\s*WORKER_CAPACITY\s*=\s*(\d+)/m)?.[1] ?? 12),
+                        wr: /^\s*WAITING_ROOM\s*=\s*(on|true|1|yes)\b/im.test(t)});
+
 async function respondSingle(){
-  $('wsTitle').firstChild.textContent = 'Response: single agent ';
-  $('wsHint').textContent = 'one TinyLlama call over all the logs; the rest is manual';
-  $('workspace').innerHTML = `<ol class="steps"><li><span class="ix">A</span><div><div class="who">single agent</div>Reading all logs from all replicas in one prompt… <span class="spin"></span></div><span class="t" id="tA"></span></li></ol>`;
-  note('Single agent started: one model call over everything.', 'agent');
+  env = {saved: ENV_DEFAULT, deployed: {cap: 12, wr: false}}; chatLog = []; termHist = []; scaled = false;
+  $('wsTitle').textContent = `${inc.id} · single agent`;
+  $('wsHint').textContent = 'one model, one prompt over all the logs';
+  $('workspace').innerHTML = `<div class="ans"><div class="h"><span>ops-assistant (TinyLlama, single prompt)</span><span><span class="spin"></span> reading everything…</span></div></div>`;
+  page('ops-assistant', 'Analysing the incident…', 'bot');
   let s;
   try { s = await call(SAPI + '/analyze', {scenario: 'surge'}); }
-  catch(e){ s = {answer: '(no answer: ' + e.message + ')', dq: null, llm:{ok:false}}; }
+  catch(e){ s = {answer: '(no answer: ' + e.message + ')', dq: null}; }
   inc.agentAt = Date.now(); inc.dq = s.dq?.dq ?? 0;
-  note(`Single agent answered after ${secs(inc.agentAt - inc.respondAt)}: generic advice, no owner, no fix.`, 'agent');
+  page('ops-assistant', `Replied after ${secs(inc.agentAt - inc.respondAt)}. No owner, nothing it can run.`, 'bot');
+  chatLog.push({role: 'agent', text: s.answer});
   $('workspace').innerHTML = `
-    <ol class="steps"><li class="done"><span class="ix">A</span><div><div class="who">single agent · DQ ${(s.dq?.dq ?? 0).toFixed(2)} ${s.dq?.actionable ? '(actionable)' : '(not actionable)'}</div>
-      <pre>${esc(s.answer)}</pre><div class="dim">No root cause, no owner, nothing it can run. The on-call engineer takes it from here.</div></div><span class="t">+${since(inc.agentAt)}</span></li></ol>
-    <h2 style="margin-top:14px">Your manual work <span class="hint">every click is work the backend team does by hand</span></h2>
-    <ol class="steps" id="manual">${MANUAL.map((m,i) => `<li id="m-${m.k}"><span class="ix">${i+1}</span><div><div class="who">${esc(m.who)}</div>${esc(m.text)}</div>
-      <button data-k="${m.k}" ${i ? 'disabled' : ''}>${esc(m.btn)}</button></li>`).join('')}</ol>`;
-  document.querySelectorAll('#manual button').forEach(b => b.onclick = async () => {
-    const k = b.dataset.k, m = MANUAL.find(x => x.k === k); b.disabled = true; b.textContent = 'working…';
-    try {
-      if (m.exec) await execute(k);
-      if (k === 'logs'){ await new Promise(r => setTimeout(r, 1500)); }
-      if (k === 'cause'){ inc.diagnosedAt = Date.now(); note('Engineer identified the cause by hand: traffic beyond worker capacity.'); }
-      if (k === 'support'){ note('Support message posted by hand.'); }
-      inc.actions++; inc.teams = 5;   // no routing: everyone gets the same generic answer
-      const li = $('m-' + k); li.classList.add('done'); b.replaceWith(Object.assign(document.createElement('span'), {className:'t', textContent:'+' + since(Date.now())}));
-      const next = li.nextElementSibling?.querySelector('button'); if (next) next.disabled = false;
-    } catch(e){ b.disabled = false; b.textContent = 'retry'; note('Failed: ' + esc(e.message), 'page'); }
-  });
+    <div class="ans">
+      <div class="h"><span>ops-assistant (TinyLlama, single prompt)</span><span>DQ ${(s.dq?.dq ?? 0).toFixed(2)} · ${s.dq?.actionable ? 'actionable' : 'not actionable'} · ${since(inc.agentAt)}</span></div>
+      <div class="chat" id="chat"></div>
+      <form class="ask" id="askForm"><input id="askIn" placeholder="Ask a follow-up, e.g. which replica is failing? what command do I run?" autocomplete="off"><button>Send</button></form>
+    </div>
+    <div class="split">
+      <div class="card" style="overflow:hidden">
+        <div class="tabs" role="tablist"><button role="tab" aria-selected="true">bastion: ~/sideb</button></div>
+        <div class="term" id="term"><div id="tout"></div><div class="in"><span class="p">$</span><input id="tin" aria-label="Terminal command" autocomplete="off" spellcheck="false"></div></div>
+      </div>
+      <div class="card" style="overflow:hidden">
+        <div class="tabs" role="tablist"><button role="tab" id="tabEnv" aria-selected="true">deploy/web.env</button><button role="tab" id="tabStatus" aria-selected="false">status page</button></div>
+        <div class="editor" id="paneEnv"><textarea id="envTx" spellcheck="false" aria-label="deploy/web.env"></textarea>
+          <div class="bar2"><span id="envState">saved</span><button id="envSave">Save (Ctrl+S)</button></div></div>
+        <div class="editor" id="paneStatus" hidden><textarea id="stTx" spellcheck="false" aria-label="Status page update">Investigating: some shoppers can't sign in or check out during the drop. We're on it.</textarea>
+          <div class="bar2"><span id="stState">draft</span><button id="stPost">Post update</button></div></div>
+      </div>
+    </div>
+    <details class="rb"><summary>Runbook: web tier overloaded (wiki)</summary><ol>
+      <li>Find the failing replicas: <code>docker stats</code>, then <code>docker compose logs --tail 15 web1</code></li>
+      <li>Bring the standby into the pool: <code>docker compose up -d web4</code></li>
+      <li>Raise <code>WORKER_CAPACITY</code> in deploy/web.env (40 handles a drop), optionally set <code>WAITING_ROOM=on</code>, save</li>
+      <li>Roll it out: <code>docker compose up -d web1 web2 web3 web4</code></li>
+      <li>Post a status page update</li></ol></details>`;
+  renderChat();
+  $('askForm').onsubmit = e => { e.preventDefault(); ask(); };
+  // terminal
+  tprint('Last login from vpn-gw on pts/2. Type help for commands.', 'c');
+  $('term').onclick = () => $('tin').focus();
+  $('tin').onkeydown = e => {
+    if (e.key === 'Enter'){ const v = $('tin').value.trim(); $('tin').value = ''; if (v){ termHist.push(v); termIdx = termHist.length; } runCmd(v); }
+    else if (e.key === 'ArrowUp'){ if (termIdx > 0){ termIdx--; $('tin').value = termHist[termIdx]; } e.preventDefault(); }
+    else if (e.key === 'ArrowDown'){ termIdx = Math.min(termHist.length, termIdx + 1); $('tin').value = termHist[termIdx] ?? ''; e.preventDefault(); }
+  };
+  // editor
+  $('envTx').value = env.saved;
+  $('envTx').oninput = () => { $('envState').textContent = 'modified, not saved'; $('envState').className = 'amber'; };
+  $('envTx').onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === 's'){ e.preventDefault(); saveEnv(); } };
+  $('envSave').onclick = saveEnv;
+  $('tabEnv').onclick = () => tab('Env'); $('tabStatus').onclick = () => tab('Status');
+  $('stPost').onclick = () => { $('stPost').disabled = true; $('stState').textContent = 'posted ' + hhmmss(); act();
+    page('statuspage', 'Status page updated by hand: “' + esc($('stTx').value.slice(0, 90)) + '”'); };
+}
+function tab(which){
+  ['Env','Status'].forEach(k => { $('tab'+k).setAttribute('aria-selected', k === which); $('pane'+k).hidden = k !== which; });
+}
+function saveEnv(){
+  env.saved = $('envTx').value; act();
+  const p = parseEnv(env.saved);
+  $('envState').textContent = `saved · not deployed (WORKER_CAPACITY=${p.cap}, WAITING_ROOM=${p.wr ? 'on' : 'off'})`; $('envState').className = 'amber';
 }
 
-/* ---------------- multi-agent: diagnose, split, approve, auto-run ---------------- */
+function renderChat(){
+  $('chat').innerHTML = chatLog.map(m => `<div class="msg ${m.role === 'user' ? 'me' : 'bot'}">${esc(m.text)}</div>`).join('');
+  $('chat').scrollTop = 1e6;
+}
+async function ask(){
+  const q = $('askIn').value.trim(); if (!q) return;
+  $('askIn').value = ''; act();
+  chatLog.push({role: 'user', text: q}); chatLog.push({role: 'agent', text: '…'}); renderChat();
+  try {
+    const r = await call(SAPI + '/chat', {question: q, history: chatLog.slice(0, -2)});
+    chatLog[chatLog.length - 1].text = r.answer;
+  } catch(e){ chatLog[chatLog.length - 1].text = '(no answer: ' + e.message + ')'; }
+  renderChat();
+}
+
+/* ---- terminal ---- */
+function tprint(text, cls=''){ const d = document.createElement('div'); d.className = 'l ' + cls; d.textContent = text; $('tout').append(d); $('term').scrollTop = 1e6; }
+const pad = (s, n) => String(s).padEnd(n);
+async function runCmd(raw){
+  tprint('$ ' + raw);
+  const c = raw.replace(/\s+/g, ' ').trim();
+  if (!c) return;
+  const reps = live?.replicas || [];
+  try {
+    if (c === 'help'){
+      ['docker compose ps                 list containers', 'docker stats                      workers, req/s and 503s per replica',
+       'docker compose logs --tail N webX tail a replica\'s logs', 'cat deploy/web.env                show the saved config',
+       'docker compose up -d <services>   start or roll out services (applies deploy/web.env)', 'clear'].forEach(l => tprint(l, 'c'));
+    } else if (c === 'clear'){ $('tout').innerHTML = ''; }
+    else if (/^docker (compose )?ps$/.test(c)){
+      act(); tprint(pad('NAME', 16) + pad('IMAGE', 22) + pad('STATUS', 22) + 'PORTS', 'c');
+      reps.forEach(r => tprint(pad('sideb-' + r.instance + '-1', 16) + pad('myantfarm/web:latest', 22) +
+        pad(r.down ? 'Exited (1)' : r.standby ? 'Created' : 'Up (healthy)', 22) + (r.standby || r.down ? '' : '8080/tcp')));
+    } else if (/^docker stats/.test(c)){
+      act(); tprint(pad('NAME', 16) + pad('WORKERS', 10) + pad('REQ/S', 9) + pad('503s', 8) + 'QUEUED', 'c');
+      reps.forEach(r => tprint(pad('sideb-' + r.instance + '-1', 16) + pad(r.standby ? '-' : `${r.inflight}/${r.capacity}`, 10) +
+        pad(r.standby ? '-' : r.rps, 9) + pad(r.rejected ?? '-', 8) + (r.queued ?? '-'), (!r.standby && r.rps > r.capacity*2) ? 'w' : ''));
+    } else if (/^docker compose logs/.test(c)){
+      const svc = c.match(/\bweb\d\b/)?.[0], n = +(c.match(/--tail[ =](\d+)/)?.[1] ?? 15);
+      if (!svc) return tprint('no service given. try: docker compose logs --tail 15 web1', 'e');
+      act();
+      const r = await call(`${API}/control/logs?instance=${svc}&limit=${n}`);
+      if (!r.records.length) tprint(`${svc}  | (no log lines yet)`, 'c');
+      r.records.forEach(x => tprint(`${svc}  | ${String(x.timestamp||'').slice(11,19)} ${pad(x.level, 5)} ${x.message}`,
+        x.level === 'ERROR' ? 'e' : x.level === 'WARN' ? 'w' : ''));
+      if (!inc.sawLogsAt && r.records.some(x => /exceed worker capacity/.test(x.message))) inc.sawLogsAt = Date.now();
+    } else if (/^cat (deploy\/)?web\.env$/.test(c)){
+      env.saved.split('\n').forEach(l => tprint(l, l.startsWith('#') ? 'c' : ''));
+    } else if (/^docker compose (up -d|restart)\b/.test(c)){
+      const named = c.match(/\bweb\d\b/g) || [], all = named.length === 0 && !/--scale/.test(c);
+      const wantWeb4 = named.includes('web4') || /--scale web=4/.test(c);
+      const touchesRunning = all || named.some(n => n !== 'web4');
+      act();
+      const out = [];
+      if (wantWeb4 && !scaled){
+        await execute('scale_out'); scaled = true; out.push(['Container sideb-web4-1', 'Started']);
+        if (!inc.diagnosedAt) inc.diagnosedAt = Date.now();
+      } else if (wantWeb4) out.push(['Container sideb-web4-1', 'Running']);
+      if (touchesRunning || wantWeb4){
+        const want = parseEnv(env.saved), d = env.deployed;
+        if (want.cap !== d.cap){ await execute('raise_capacity', {value: want.cap}); d.cap = want.cap; if (!inc.diagnosedAt) inc.diagnosedAt = Date.now(); }
+        if (want.wr !== d.wr){ await execute('waiting_room', {on: want.wr}); d.wr = want.wr; }
+        const changed = out.length || want.cap !== 12 || want.wr;
+        (named.length ? named : ['web1','web2','web3']).filter(n => n !== 'web4')
+          .forEach(n => out.push([`Container sideb-${n}-1`, changed ? 'Recreated' : 'Running']));
+        $('envState') && ($('envState').textContent = `deployed (WORKER_CAPACITY=${d.cap}, WAITING_ROOM=${d.wr ? 'on' : 'off'})`, $('envState').className = 'green');
+      }
+      tprint(`[+] Running ${out.length}/${out.length}`);
+      out.forEach(([a, b]) => tprint(` ✔ ${pad(a, 26)} ${b}`, 'p'));
+    } else if (/^(curl|kubectl|ssh|sudo|systemctl)\b/.test(c)){
+      tprint(`${c.split(' ')[0]}: not available on this bastion; use docker compose`, 'e');
+    } else tprint(`bash: ${c.split(' ')[0]}: command not found`, 'e');
+  } catch(e){ tprint('error: ' + e.message, 'e'); }
+}
+
+/* ================= multi-agent: diagnose, split, approve, auto-run ================= */
 async function respondMulti(){
-  $('wsTitle').firstChild.textContent = 'Response: multi-agent ';
-  $('wsHint').textContent = '4 specialist agents in parallel, then the coordinator plans and runs the fix';
-  $('workspace').innerHTML = `<ol class="steps"><li><span class="ix">A</span><div><div class="who">4 agents in parallel</div>frontend, server, database and user-report agents each read their own stream from every replica… <span class="spin"></span></div></li></ol>`;
-  note('Multi-agent response started: 4 specialist agents in parallel.', 'agent');
+  $('wsTitle').textContent = `${inc.id} · multi-agent`;
+  $('wsHint').textContent = '4 monitor agents in parallel → coordinator';
+  $('workspace').innerHTML = `<div class="ans"><div class="h"><span>frontend · server · database · user-reports agents</span><span><span class="spin"></span> each reading its own stream…</span></div></div>`;
+  page('antfarm', '4 agents started in parallel.', 'bot');
   let m;
   try { m = await call(API + '/incident/analyze', {scenario: 'surge', mode: 'extended'}); }
-  catch(e){ $('workspace').innerHTML = `<p class="bad">Diagnosis failed: ${esc(e.message)}</p>`; return; }
+  catch(e){ $('workspace').innerHTML = `<p class="red">Diagnosis failed: ${esc(e.message)}</p>`; return; }
   const b = m.brief, d = b.diagnosis;
   inc.agentAt = inc.diagnosedAt = Date.now(); inc.dq = m.dq?.dq ?? 0; inc.teams = b.teams_paged.length;
-  note(`<b>Diagnosis</b> after ${secs(inc.diagnosedAt - inc.respondAt)}: ${esc(d.title)} (${d.confidence_pct}% confidence, ${d.supporting_agents.length} agents agree). ${b.teams_paged.length} teams paged with their own tickets.`, 'agent');
+  page('antfarm', `<b>${esc(d.title)}</b> · ${d.confidence_pct}% confidence, ${d.supporting_agents.length} agents agree. Tickets opened for ${b.teams_paged.length} teams.`, 'bot');
   const runnable = b.action_plan.filter(a => a.execute);
   $('workspace').innerHTML = `
-    <ol class="steps">
-      <li class="done"><span class="ix">A</span><div><div class="who">4 agents · ${esc(Object.values(m.agents).map(a => a.agent + ': ' + a.status).join(', '))}</div>
-        Root cause: <b class="${d.id==='traffic_surge'?'ok':'warn'}">${esc(d.title)}</b>, ${d.confidence_pct}% confidence · DQ ${(m.dq?.dq ?? 0).toFixed(2)}
-        <pre>${esc(b.evidence_chain.slice(0,4).join('\n'))}</pre></div><span class="t">+${since(inc.diagnosedAt)}</span></li>
-      <li id="approveLi"><span class="ix">B</span><div><div class="who">You (backend designer)</div>Review the plan. ${runnable.length} actions can run automatically:
-        <ul>${b.action_plan.map(a => `<li>${a.execute ? '⚡' : '·'} <span class="blue">${esc(a.owner)}</span>: ${esc(a.action)}</li>`).join('')}</ul></div>
-        <button class="go" id="approveBtn">Approve and run the plan</button></li>
-      ${runnable.map((a,i) => `<li id="x-${a.execute}"><span class="ix">${i+1}</span><div><div class="who">coordinator → ${esc(a.owner)}</div>${esc(a.action)}<br><code>${esc(a.command)}</code></div><span class="t">waiting</span></li>`).join('')}
-    </ol>
-    <div class="tickets">${b.team_tickets.filter(t=>t.page).map(t => `<div class="ticket"><b>${esc(t.team)}</b> <span class="dim">P${t.priority}</span><br>${t.actions.map(a=>esc(a.action)).join('<br>')}</div>`).join('')}</div>`;
+    <div class="ans"><div class="h"><span>${esc(Object.values(m.agents).map(a => a.agent + ': ' + a.status).join(' · '))}</span><span>DQ ${(m.dq?.dq ?? 0).toFixed(2)} · ${since(inc.diagnosedAt)}</span></div>
+      <pre><b>${esc(d.title)}</b> (${d.confidence_pct}% confidence)\n\n${esc(b.evidence_chain.slice(0,4).join('\n'))}</pre></div>
+    <ul class="plan">
+      ${b.action_plan.map(a => `<li id="${a.execute ? 'x-' + a.execute : ''}"><span class="own">${esc(a.owner)}</span><div>${esc(a.action)}${a.execute ? `<code>${esc(a.command)}</code>` : ''}</div><span class="st">${a.execute ? 'pending approval' : 'ticket'}</span></li>`).join('')}
+    </ul>
+    <div class="row" style="margin-top:12px"><button class="ok" id="approveBtn">Approve and run ${runnable.length} actions</button><span class="dim" style="font-size:13px">the rest go to each team as tickets</span></div>
+    <div class="tix">${b.team_tickets.filter(t=>t.page).map(t => `<div><b>${esc(t.team)}</b> <span class="dim mono">P${t.priority}</span><br>${t.actions.map(a=>esc(a.action)).join('<br>')}</div>`).join('')}</div>`;
   $('approveBtn').onclick = async () => {
-    $('approveBtn').disabled = true; inc.actions++;
-    $('approveLi').classList.add('done');
-    note('Backend designer approved the plan (1 click). The coordinator is running it.');
+    $('approveBtn').disabled = true; act();
+    page('pager', `Plan approved by backend on-call. Coordinator is running ${runnable.length} actions.`);
     for (const a of runnable){
       const li = $('x-' + a.execute);
-      li.querySelector('.t').innerHTML = '<span class="spin"></span>';
-      try { await execute(a.execute); li.classList.add('done'); li.querySelector('.t').textContent = '+' + since(Date.now()); }
-      catch(e){ li.querySelector('.t').textContent = 'failed'; }
+      li.querySelector('.st').innerHTML = '<span class="spin"></span>';
+      try { await execute(a.execute); li.classList.add('done'); li.querySelector('.st').textContent = 'done ' + since(Date.now()); }
+      catch(e){ li.querySelector('.st').textContent = 'failed'; }
     }
   };
 }
 
-/* ---------------- scoreboard ---------------- */
+/* ---------------- comparison ---------------- */
 function renderScore(){
   const s = runs.single, m = runs.multi;
   const v = (r, f) => r ? f(r) : '—';
   const mttr = r => r.recoveredAt ? (r.recoveredAt - r.alertAt) : null;
   const diag = r => r.diagnosedAt ? (r.diagnosedAt - r.alertAt) : null;
   const rows = [
-    ['Time to diagnosis (page → root cause known)', r => diag(r) != null ? secs(diag(r)) : '—', 'lower'],
-    ['Time to recovery (page → failures under 5%)', r => mttr(r) != null ? secs(mttr(r)) : 'not yet', 'lower'],
-    ['Human actions by the backend team', r => r.actions, 'lower'],
-    ['Teams pulled in', r => r.mode === 'single' ? '5 (no routing, same message to all)' : `${r.teams} (each with its own ticket)`, 'none'],
-    ['Shopper requests that failed during the incident', r => r.failedShoppers ?? '—', 'lower'],
-    ['Decision quality of the agent output (DQ)', r => (r.dq ?? 0).toFixed(2), 'higher'],
+    ['Time to root cause', r => diag(r) != null ? secs(diag(r)) : '—'],
+    ['Time to recovery', r => mttr(r) != null ? secs(mttr(r)) : 'open'],
+    ['Manual actions (commands, edits, questions, approvals)', r => r.actions],
+    ['Teams involved', r => r.mode === 'single' ? '5, same message to all' : `${r.teams}, own ticket each`],
+    ['Failed shopper requests', r => r.failedShoppers ?? '—'],
+    ['Decision quality (DQ)', r => (r.dq ?? 0).toFixed(2)],
   ];
   let gains = '';
   if (s && m && mttr(s) && mttr(m)){
     const fast = Math.round(100 * (1 - mttr(m) / mttr(s)));
     const work = Math.round(100 * (1 - m.actions / Math.max(1, s.actions)));
     const fail = s.failedShoppers ? Math.round(100 * (1 - (m.failedShoppers||0) / s.failedShoppers)) : null;
-    gains = `<div class="row" style="gap:28px;margin-top:14px">
-      <div><div class="gain">${work}%</div><div class="dim">less manual work for the backend team</div></div>
-      <div><div class="gain">${fast}%</div><div class="dim">faster recovery</div></div>
-      ${fail != null ? `<div><div class="gain">${fail}%</div><div class="dim">fewer failed shopper requests</div></div>` : ''}</div>
-      <p class="how">Computed from the two runs above, as measured on this page. Numbers change run to run with model speed and how fast you click.</p>`;
+    gains = `<div class="gains"><div><b>${work}%</b><span>fewer manual actions</span></div><div><b>${fast}%</b><span>faster recovery</span></div>
+      ${fail != null ? `<div><b>${fail}%</b><span>fewer failed requests</span></div>` : ''}</div>`;
   }
   $('score').innerHTML = `<table><tr><th></th><th>Single agent</th><th>Multi-agent</th></tr>
-    ${rows.map(([label, f, better]) => {
-      const a = v(s, f), b = v(m, f);
-      return `<tr><td>${label}</td><td>${a}</td><td>${b}</td></tr>`;
-    }).join('')}</table>${gains}`;
+    ${rows.map(([label, f]) => `<tr><td>${label}</td><td>${v(s, f)}</td><td>${v(m, f)}</td></tr>`).join('')}</table>${gains}`;
 }
 renderScore();
 poll(); setInterval(poll, 1000);
+pollPeople(); setInterval(pollPeople, 5000);
 </script>
 </body>
 </html>

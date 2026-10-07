@@ -253,6 +253,8 @@ def init_db():
                     id TEXT PRIMARY KEY, title TEXT, artist TEXT, year INT, price INT,
                     stock INT, initial_stock INT, pressing TEXT, palette TEXT, pattern TEXT,
                     tracks TEXT, notes TEXT);
+                CREATE TABLE IF NOT EXISTS presence(
+                    user_id INTEGER PRIMARY KEY, name TEXT, picture TEXT, provider TEXT, last_seen REAL);
                 CREATE TABLE IF NOT EXISTS orders(
                     id TEXT PRIMARY KEY, user_id INT, items TEXT, total INT,
                     instance TEXT, created TEXT);
@@ -275,6 +277,7 @@ init_db()
 # Sessions (stateless JWT so every replica accepts every session)
 # ---------------------------------------------------------------------------
 def issue_token(user: sqlite3.Row) -> dict:
+    touch_presence(user["id"])
     payload = {"sub": str(user["id"]), "email": user["email"], "name": user["name"],
                "exp": datetime.now(timezone.utc) + timedelta(days=7)}
     return {"token": jwt.encode(payload, JWT_SECRET, algorithm="HS256"),
@@ -469,6 +472,53 @@ async def google_login(req: GoogleReq):
         con.execute("UPDATE users SET picture=COALESCE(?, picture) WHERE email=?", (info.get("picture"), email))
         user = con.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
     return issue_token(user)
+
+
+ONLINE_WINDOW_S = 90
+
+
+def touch_presence(user_id: int):
+    """Mark a signed-in shopper as online (shared SQLite, so every replica sees everyone)."""
+    try:
+        with db() as con:
+            u = con.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if u:
+                con.execute("INSERT OR REPLACE INTO presence VALUES(?,?,?,?,?)",
+                            (u["id"], u["name"] or u["email"].split("@")[0], u["picture"], u["provider"], time.time()))
+    except sqlite3.OperationalError:
+        pass
+
+
+def online_users() -> list[dict]:
+    with db() as con:
+        rows = con.execute("SELECT * FROM presence WHERE last_seen > ? ORDER BY last_seen DESC",
+                           (time.time() - ONLINE_WINDOW_S,)).fetchall()
+    return [{"name": r["name"], "picture": r["picture"], "provider": r["provider"],
+             "seen_s_ago": round(time.time() - r["last_seen"])} for r in rows]
+
+
+@app.post("/api/presence")
+def presence(authorization: str | None = Header(None)):
+    u = current_user(authorization)
+    if u:
+        touch_presence(int(u["sub"]))
+    people = online_users()
+    return {"count": len(people), "people": people}
+
+
+@app.get("/api/online")
+def online():
+    people = online_users()
+    return {"count": len(people), "people": people}
+
+
+@app.post("/auth/logout")
+def logout(authorization: str | None = Header(None)):
+    u = current_user(authorization)
+    if u:
+        with db() as con:
+            con.execute("DELETE FROM presence WHERE user_id=?", (int(u["sub"]),))
+    return {"ok": True}
 
 
 @app.get("/auth/me")

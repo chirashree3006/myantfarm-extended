@@ -36,6 +36,14 @@ def respond(p: str, rnd: random.Random) -> str:
         return ("Based on the incident report, it seems that there are some issues with the system. "
                 "The team should investigate further and check recent changes. It is also recommended "
                 "to monitor the situation and contact the support team if the problem continues.")
+    if p.rstrip().endswith("Assistant:"):   # single-agent follow-up chat
+        return rnd.choice([
+            "It looks like the servers may be under heavy load. You could try checking the logs and restarting "
+            "the affected services. It may also help to scale up resources if the issue continues.",
+            "I'm not able to see which replica exactly, but the errors suggest a capacity problem. Consider "
+            "reviewing the configuration and monitoring the system closely.",
+            "You may want to increase the resources available to the web servers. Please check with the "
+            "infrastructure team about the right values for your environment."])
     if "Remediation Planner" in p:
         return (" Check the logs of the affected service to find the error.\n"
                 "2. Roll back the deployment to the previous version.\n"
