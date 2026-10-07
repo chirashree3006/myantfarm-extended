@@ -203,7 +203,7 @@ VM down or `docker compose down` after your evaluation.
    ```
    GOOGLE_CLIENT_ID=1234567890-abc123.apps.googleusercontent.com
    ```
-5. Restart the web tier: `docker compose up -d web1 web2 web3`. The sign-in dialog now shows
+5. Restart the web tier: `docker compose up -d web1 web2 web3 web4`. The sign-in dialog now shows
    **Continue with Google**. New Google users get an account automatically. The backend checks
    the token's audience, issuer and verified email with Google before signing them in.
 
@@ -245,7 +245,7 @@ by itself.
    choose **Port visibility → Public**. Anyone with the link can now open the shop.
 6. **Google sign-in:** add `https://<codespace-name>-80.app.github.dev` to the Google client's
    Authorized JavaScript origins (section E), put the Client ID in `.env`, then run
-   `docker compose up -d web1 web2 web3`. The address stays the same for that codespace.
+   `docker compose up -d web1 web2 web3 web4`. The address stays the same for that codespace.
 7. **Experiments:** run them in the codespace terminal:
    ```bash
    cd loadtest
@@ -253,6 +253,10 @@ by itself.
    python resilience.py --docker          # includes LLM replica / LLM outage tests
    ```
    Download `loadtest/results/` from the file explorer (right-click → Download).
+8. **Traffic-surge demo:** open `https://<codespace-name>-80.app.github.dev/backend/` (see README,
+   "Traffic-surge demo").
+9. **Update after a `git push` from your PC:** in the codespace terminal run
+   `git checkout -- . && git pull && docker compose up -d --build`.
 
 **Limits:** the codespace stops after 30 idle minutes. You can raise this to 4 hours under
 GitHub → Settings → Codespaces → Default idle timeout. Free accounts get a fixed number of

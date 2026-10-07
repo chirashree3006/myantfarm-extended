@@ -138,3 +138,34 @@ def test_extract_json_from_chatter():
     assert extract_json('Sure! {"observation": "pool full", "severity": "high"} hope it helps') == \
         {"observation": "pool full", "severity": "high"}
     assert extract_json("no json here") is None
+
+
+SURGE_STATUS = {"web1": {"instance": "web1", "service": "web-tier", "deploy_version": "v2.3.0",
+                         "previous_version": "v2.2.4", "fault_mode": "surge"}}
+
+
+def surge_streams():
+    db = [{"instance": "web1", "active_connections": 3, "pool_size": 10, "pool_utilization_pct": 30.0,
+           "avg_wait_time_ms": 12, "timestamp": f"t{i}"} for i in range(10)]
+    srv = [{"instance": "web1", "level": "WARN", "deploy_version": "v2.3.0", "service": "web-tier",
+            "message": "Traffic spike: 106.2 req/s on this replica (normal under 5)", "timestamp": "t1"}] * 3 + \
+          [{"instance": "web1", "level": "ERROR", "deploy_version": "v2.3.0", "service": "web-tier",
+            "endpoint": "/auth/login",
+            "message": "Request rejected: 106.2 req/s arriving exceed worker capacity 12 (traffic spike, 12 in flight)",
+            "timestamp": "t2"}] * 20
+    fe = [{"instance": "web1", "status_code": 503, "page": "/login",
+           "message": "Side B is down: 503 Service Unavailable", "timestamp": "t3"}] * 20
+    us = [{"instance": "web1", "text": "The site keeps showing 'Side B is down' during the drop. Nothing loads.",
+           "timestamp": "t4"}] * 2
+    return {"frontend": {"records": fe}, "server": {"records": srv},
+            "database": {"records": db}, "users": {"records": us}}
+
+
+def test_traffic_surge_scales_out_not_rollback():
+    b = run(surge_streams(), SURGE_STATUS)
+    assert b["diagnosis"]["id"] == "traffic_surge"
+    execs = {a.get("execute") for a in b["action_plan"]}
+    assert {"scale_out", "raise_capacity", "waiting_room"} <= execs
+    assert not any(a["type"] == "rollback" for a in b["action_plan"])
+    d = dq(b, "surge")
+    assert d["actionable"] and d["root_cause_correct"]

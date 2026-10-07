@@ -37,6 +37,7 @@ GROUND_TRUTH = {
     # our additional live scenarios, written in the same style
     "leak": "rollback checkout-service deployment to v2.2.4 restart replicas release database connection pool",
     "slow_db": "create index on orders user_id verify slow database query explain analyze",
+    "surge": "scale out web replicas raise worker capacity enable waiting room load balancer traffic",
 }
 
 ROOT_CAUSE = {
@@ -46,6 +47,7 @@ ROOT_CAUSE = {
              [r"slow quer", r"missing index", r"auth"]),
     "slow_db": ([r"slow (sql|quer|database)", r"missing index|no index|full table scan"],
                 [r"\bleak\b", r"pool (is )?exhaust"]),
+    "surge": ([r"traffic|surge|spike", r"capacity|overload|scale"], [r"\bleak\b", r"missing index", r"auth"]),
 }
 
 VERSION_RE = re.compile(r"\bv?\d+\.\d+(\.\d+)?\b", re.I)

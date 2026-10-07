@@ -37,5 +37,6 @@ if [ -n "$CODESPACE_NAME" ]; then
   gh codespace ports visibility 80:public -c "$CODESPACE_NAME" >/dev/null 2>&1 || true
   echo "Shop        : $URL/"
   echo "Ops console : $URL/ops/"
+  echo "Backend     : $URL/backend/   (traffic-surge demo)"
   echo "If the link doesn't open: Ports tab -> Forward a Port -> 80 -> right-click -> Port visibility -> Public"
 fi

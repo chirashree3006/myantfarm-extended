@@ -161,6 +161,14 @@ label.f input{display:block;width:100%;margin-top:5px;border:1.5px solid var(--i
 .toast{visibility:hidden;position:fixed;left:50%;bottom:24px;transform:translate(-50%,140%);background:var(--ink);color:var(--paper);padding:12px 18px;border-radius:999px;
   font:600 15px var(--display);z-index:60;transition:transform .25s cubic-bezier(.2,.8,.2,1);max-width:calc(100% - 32px)}
 .toast.on{transform:translate(-50%,0);visibility:visible}
+.outage{position:fixed;inset:0;z-index:80;background:var(--ink);color:var(--paper);display:none;place-items:center;padding:24px}
+.outage.on{display:grid}
+.outage .box{max-width:560px}
+.outage h2{font:800 clamp(48px,9vw,96px)/.9 var(--display);letter-spacing:-.04em;margin:0 0 18px;color:var(--pink)}
+.outage p{font-size:18px;color:#C9CEE6;margin:0 0 22px}
+.outage .disc{width:120px;height:120px;margin-bottom:24px}
+.outage.queue .disc{animation:spin 1.8s linear infinite}
+.outage .cta{background:var(--yellow)}
 .menu{position:absolute;right:var(--gutter);top:64px;background:var(--paper);border:1.5px solid var(--ink);border-radius:12px;padding:6px;display:none;min-width:200px;box-shadow:4px 4px 0 var(--ink)}
 .menu.on{display:block}
 .menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:9px 12px;border-radius:8px;cursor:pointer;font:600 15px var(--display)}
@@ -266,6 +274,16 @@ label.f input{display:block;width:100%;margin-top:5px;border:1.5px solid var(--i
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<!-- shown when the servers are overloaded (503) or the waiting room is on (429) -->
+<div class="outage" id="outage" role="alertdialog" aria-labelledby="outH" aria-describedby="outP">
+  <div class="box">
+    <svg class="disc" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#0A0A0A" stroke="#FF4F9A"/><circle cx="16" cy="16" r="6" fill="#FF4F9A"/><circle cx="16" cy="16" r="1.5" fill="#EEF0F3"/></svg>
+    <h2 id="outH">Side B is down</h2>
+    <p id="outP">Too many shoppers arrived at once and our servers can't take any more requests. Nothing was charged.</p>
+    <button class="cta" id="outRetry">Try again</button>
+  </div>
+</div>
+
 <script>
 const API = new URLSearchParams(location.search).get('api') || '/shop-api';
 const $ = id => document.getElementById(id);
@@ -283,6 +301,9 @@ async function api(path, opts = {}){
   try { r = await fetch(API + path, {...opts, headers}); }
   catch { return {ok:false, status:0, data:{error:"Can't reach the store. Check your connection and try again."}}; }
   let data = {}; try { data = await r.json(); } catch {}
+  if (r.status === 503 && data.error === 'overloaded') showOutage('down', data.message);
+  else if (r.status === 429) showOutage('queue', data.message);
+  else if (r.ok) hideOutage();
   return {ok:r.ok, status:r.status, data, instance:r.headers.get('X-Instance')};
 }
 
@@ -466,6 +487,23 @@ async function showOrders(){
       <small>${o.items.map(i=>`${i.qty} × ${esc(i.title)}`).join(', ')}</small></li>`).join('') : `<li>No orders yet. Your next drop is waiting.</li>`;
   $('ordersDlg').showModal();
 }
+
+/* ---------- outage screen (overload / waiting room) ---------- */
+let outTimer = null;
+function showOutage(kind, msg){
+  // modal dialogs sit in the browser's top layer, above any z-index: close them first
+  ['authDlg', 'ordersDlg'].forEach(id => { if ($(id).open) $(id).close(); });
+  const o = $('outage'); o.className = 'outage on' + (kind === 'queue' ? ' queue' : '');
+  $('outH').textContent = kind === 'queue' ? "You're in the queue" : 'Side B is down';
+  $('outP').textContent = kind === 'queue'
+    ? 'The drop is busy, so we are letting shoppers in a few at a time. This page retries by itself; keep it open.'
+    : (msg || "Too many shoppers arrived at once and our servers can't take any more requests. Nothing was charged.");
+  $('outRetry').textContent = kind === 'queue' ? 'Retry now' : 'Try again';
+  clearTimeout(outTimer);
+  if (kind === 'queue') outTimer = setTimeout(() => refresh(), 3000);
+}
+function hideOutage(){ clearTimeout(outTimer); $('outage').className = 'outage'; }
+$('outRetry').onclick = () => refresh();
 
 /* ---------- countdown: drops close Sunday 21:00 local ---------- */
 function tick(){

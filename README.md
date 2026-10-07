@@ -56,6 +56,25 @@ Things to try on the shop while a fault is on: with *Connection leak*, checkouts
 message and nothing is charged. With *Auth regression*, about 45% of sign-ins fail. Crash `web2`
 on the ops console and keep shopping: the load balancer routes around it.
 
+### Traffic-surge demo (backend on-call console)
+
+Open **http://localhost/backend/** next to the shop.
+
+1. **Reset everything → Start flash-sale surge.** 150 simulated shoppers hit the shop through the
+   load balancer. Each replica handles 12 requests at a time, so the shop crashes: sign-in in the shop
+   tab shows **"Side B is down"**. The pager fires when more than 20% of requests fail.
+2. **Single agent → Respond.** One TinyLlama call (C2) gives generic advice. You then do 6 manual steps
+   (read logs, find the cause, scale out, raise capacity, waiting room, notify support).
+3. **Reset → Start surge → Multi-agent → Respond.** Four monitor agents run in parallel. The coordinator
+   diagnoses `traffic_surge` and proposes a plan. **Approve and run the plan** (1 click) adds standby
+   replica web4 to the pool, raises capacity 12→40 and turns on the waiting room. Each team gets its own ticket.
+4. The **Scoreboard** compares time to diagnosis, time to recovery, human actions, failed shopper
+   requests and DQ. The % gains are measured on that run, so they change from run to run.
+
+Remediation API: `POST /api/multi/control/surge {"seconds":120,"concurrency":150}`,
+`POST /api/multi/incident/execute {"action":"scale_out"|"raise_capacity"|"waiting_room"}`,
+`GET /api/multi/control/live`.
+
 ## Free cloud hosting (no card)
 
 Open the repo in **GitHub Codespaces** (Code → Codespaces → 4-core machine). The `.devcontainer/` starts everything; then make port 80 public. Full steps are in `deploy/DEPLOY_GUIDE.md`, section G.
@@ -97,6 +116,7 @@ Markdown tables into your report.
 ```
 demo-website/app.py      Side B API: auth (email + Google), products, orders, faults, chaos, 4 streams
 gateway/www/index.html   Side B shop UI          gateway/www/ops/index.html  ops console
+gateway/www/backend/     backend on-call console (traffic-surge demo, single vs multi-agent)
 gateway/nginx.conf       all load balancers + chaos routing
 multi-agent/antfarm/     llm.py (TinyLlama client: LB, failover, budgets, JSON mode, metrics)
                          agents.py · fusion.py (C3x) · paper.py (C1, C3) · baseline.py (C2)

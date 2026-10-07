@@ -9,3 +9,4 @@ loadtest/results/*
 *.key
 *.pem
 demo-website/data/
+*.tgz

@@ -73,14 +73,18 @@ def analyze_frontend(stream: dict) -> dict:
         f["signals"].append("http_500")
     if codes.get(504):
         f["signals"].append("http_504")
-    if login_errs:
+    if login_errs and not codes.get(503):
         f["signals"].append("login_failures")
+    if codes.get(503):
+        f["signals"].append("http_503")
     top_msg, top_n = msgs.most_common(1)[0]
     page = pages.most_common(1)[0][0]
     f["evidence"].append(f"{len(recs)} browser errors on {page}; most common: \"{top_msg}\" (x{top_n})")
     f["evidence"].append("status codes: " + ", ".join(f"HTTP {c} x{n}" for c, n in codes.items()))
     f["severity"] = 3 if len(recs) >= 10 else 2
-    if login_errs and len(login_errs) >= len(recs) / 2:
+    if codes.get(503, 0) >= len(recs) / 2:
+        f["hypothesis"] = f"The site is returning 503 Service Unavailable to shoppers ({codes[503]} errors): servers are refusing requests."
+    elif login_errs and len(login_errs) >= len(recs) / 2:
         f["hypothesis"] = f"Users cannot sign in: {len(login_errs)} sign-in requests failed with HTTP 500 on /login."
     elif "http_504" in f["signals"] and "http_500" not in f["signals"]:
         f["hypothesis"] = f"Checkout requests on {page} are timing out (HTTP 504) -- a slow backend dependency."
@@ -101,6 +105,8 @@ def analyze_server(stream: dict) -> dict:
     auth = [r for r in recs if r.get("level") == "ERROR" and r.get("endpoint", "").startswith("/auth")]
     timeouts = [r for r in recs if "timeout" in r.get("message", "").lower()]
     slow = [r for r in recs if "slow query" in r.get("message", "").lower()]
+    overload = [r for r in recs if "exceed worker capacity" in r.get("message", "")]
+    spikes = [r for r in recs if r.get("message", "").startswith("Traffic spike")]
     total = len(recs)
     errors = levels.get("ERROR", 0)
     f["metrics"] = {"log_lines": total, "levels": dict(levels),
@@ -126,6 +132,17 @@ def analyze_server(stream: dict) -> dict:
         f["affected_instances"] += [r["instance"] for r in timeouts + slow]
         if timeouts:
             f["signals"].append("query_timeouts")
+    if spikes:
+        f["signals"].append("traffic_spike")
+        f["evidence"].append(f"traffic spike warnings: \"{spikes[-1]['message']}\" on "
+                             + ", ".join(sorted({r['instance'] for r in spikes})))
+        f["affected_instances"] += [r["instance"] for r in spikes]
+    if overload:
+        f["signals"].append("overload")
+        f["metrics"]["rejected_requests"] = len(overload)
+        f["evidence"].append(f"{len(overload)} x ERROR \"{overload[-1]['message'][:110]}\"")
+        f["affected_instances"] += [r["instance"] for r in overload]
+    auth = [r for r in auth if "exceed worker capacity" not in r.get("message", "")]
     if auth:
         f["signals"].append("auth_errors")
         f["metrics"]["auth_errors"] = len(auth)
@@ -143,7 +160,10 @@ def analyze_server(stream: dict) -> dict:
     if errors == 0 and not slow:
         return _finish(f)
     f["severity"] = 3 if f["metrics"]["error_rate_pct"] >= 20 else 2 if errors else 1
-    if auth and len(auth) >= len(exhausted):
+    if overload and len(overload) >= max(len(auth), len(exhausted)):
+        f["hypothesis"] = ("Workers are saturated by a traffic spike: requests beyond worker capacity are "
+                           "rejected with 503.")
+    elif auth and len(auth) >= len(exhausted):
         f["hypothesis"] = (f"Login handler in {f.get('service', 'auth-service')} {f['deploy_version']} throws on "
                            "token signing -- a regression shipped with the latest deploy.")
     elif exhausted:
@@ -229,6 +249,9 @@ def analyze_users(stream: dict) -> dict:
     fail = [r for r in recs if re.search(r"fail|error|spins", r.get("text", ""), re.I)]
     slow = [r for r in recs if re.search(r"slow|time[sd]? ?out|long wait", r.get("text", ""), re.I)]
     login = [r for r in recs if re.search(r"log ?in|sign ?in|password", r.get("text", ""), re.I)]
+    down = [r for r in recs if re.search(r"is down|nothing loads|not loading", r.get("text", ""), re.I)]
+    if down:
+        f["signals"].append("user_complaints_down")
     if login:
         f["signals"].append("user_complaints_login")
     f["metrics"] = {"tickets": len(recs), "failure_tickets": len(fail), "slowness_tickets": len(slow)}
@@ -239,7 +262,9 @@ def analyze_users(stream: dict) -> dict:
         f["signals"].append("user_complaints_slow")
     f["evidence"].append(f"{len(recs)} support tickets; latest: \"{recs[-1]['text']}\"")
     f["severity"] = 2 if len(recs) >= 3 else 1
-    if login and len(login) >= len(recs) / 2:
+    if down and len(down) >= len(recs) / 2:
+        f["hypothesis"] = "Customers report the whole site is down during the drop."
+    elif login and len(login) >= len(recs) / 2:
         f["hypothesis"] = "Customers cannot sign in to their accounts."
     elif fail and not slow:
         f["hypothesis"] = "Users cannot complete checkout -- customer-facing outage."
@@ -277,6 +302,10 @@ AGREE_KEYWORDS = {
     "auth_errors": ("auth", "login", "token"),
     "deploy_regression": ("deploy", "version", "v2"),
     "pool_high": ("pool", "connection", "85", "capacity"),
+    "http_503": ("503", "unavailable", "down"),
+    "overload": ("capacity", "overload", "reject", "traffic"),
+    "traffic_spike": ("traffic", "spike", "req/s"),
+    "user_complaints_down": ("down", "load"),
 }
 
 

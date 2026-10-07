@@ -32,6 +32,7 @@ Run locally (single instance):
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -63,13 +64,20 @@ SLOW_QUERY_TIMEOUT_MS = int(os.getenv("SLOW_QUERY_TIMEOUT_MS", "600"))
 AUTH_FAILURE_RATE = float(os.getenv("AUTH_FAILURE_RATE", "0.45"))
 DEMO_EMAIL, DEMO_PASSWORD = "demo@sideb.store", "dropday2026"
 
-FAULT_MODES = ("none", "leak", "slow_db", "auth_regression")
+FAULT_MODES = ("none", "leak", "slow_db", "auth_regression", "surge")
+# Worker capacity: in-flight shop requests one replica can hold. A flash-sale
+# surge makes every request slow (hot product rows, DB contention), so the
+# workers fill up and extra requests are rejected with 503 -- the site "crashes".
+DEFAULT_CAPACITY = int(os.getenv("WORKER_CAPACITY", "12"))
+STANDBY_DEFAULT = os.getenv("STANDBY", "0") == "1"   # web4 starts as a standby replica
+SHOP_PATHS = ("/auth/", "/api/")
 # (service that was just deployed, its version, last good version)
 DEPLOYS = {
     "none": ("checkout-service", "v2.3.0", "v2.2.4"),
     "leak": ("checkout-service", "v2.3.0", "v2.2.4"),
     "slow_db": ("checkout-service", "v2.3.0", "v2.2.4"),
     "auth_regression": ("auth-service", "v2.3.1", "v2.3.0"),
+    "surge": ("checkout-service", "v2.3.0", "v2.2.4"),
 }
 
 app = FastAPI(title=f"Side B record store ({INSTANCE_ID})")
@@ -81,7 +89,11 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
 # ---------------------------------------------------------------------------
 state = {"fault_mode": "none", "active_connections": 0, "total_requests": 0,
          "total_failures": 0, "login_attempts": 0, "login_failures": 0,
-         "deploy_time": datetime.now(timezone.utc).isoformat(), "down_until": 0.0}
+         "deploy_time": datetime.now(timezone.utc).isoformat(), "down_until": 0.0,
+         "capacity": DEFAULT_CAPACITY, "inflight": 0, "rejected": 0, "queued": 0, "hits": 0,
+         "waiting_room": False, "standby": STANDBY_DEFAULT}
+recent_hits: deque = deque(maxlen=20000)     # timestamps of shop requests (for req/s)
+last_spike_log = [0.0]
 lock = threading.Lock()
 
 MAX_LOG = 200
@@ -102,10 +114,61 @@ def deploy() -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # Middleware: replica tag + chaos switch
 # ---------------------------------------------------------------------------
+def rps(window: float = 5.0) -> float:
+    cutoff = time.time() - window
+    return round(sum(1 for t in reversed(recent_hits) if t >= cutoff) / window, 1)
+
+
+def _overload(path: str) -> JSONResponse:
+    """Worker pool full: reject. With the waiting room on, queue the shopper instead."""
+    if state["waiting_room"]:
+        state["queued"] += 1
+        return JSONResponse({"error": "waiting_room", "message": "Side B is busy with the drop. You're in the queue; "
+                             "this page retries by itself."}, status_code=429, headers={"Retry-After": "3"})
+    state["rejected"] += 1
+    state["total_failures"] += 1
+    rid = f"{INSTANCE_ID}-rej_{state['rejected']:05d}"
+    page = "/login" if path.startswith("/auth") else "/checkout" if "checkout" in path else "/"
+    server_logs.append({"timestamp": now(), "instance": INSTANCE_ID, "level": "ERROR", "request_id": rid,
+                        "message": f"Request rejected: {rps()} req/s arriving exceed worker capacity "
+                                   f"{state['capacity']} (traffic spike, {state['inflight']} in flight)",
+                        "endpoint": path, "service": "web-tier", "deploy_version": DEPLOYS["surge"][1]})
+    frontend_errors.append({"timestamp": now(), "instance": INSTANCE_ID, "request_id": rid,
+                            "message": "Side B is down: 503 Service Unavailable", "page": page, "status_code": 503})
+    if state["rejected"] % 25 == 0:
+        _user_report("The site keeps showing 'Side B is down' during the drop. Nothing loads.")
+    return JSONResponse({"error": "overloaded", "message": "Side B is down: too many shoppers at once. "
+                         "Nothing was charged. Try again in a minute."}, status_code=503)
+
+
 @app.middleware("http")
 async def chaos_and_tag(request: Request, call_next):
-    if time.time() < state["down_until"] and not request.url.path.startswith("/chaos"):
+    path = request.url.path
+    if time.time() < state["down_until"] and not path.startswith("/chaos"):
         resp = JSONResponse({"error": f"{INSTANCE_ID} is down (chaos test)"}, status_code=503)
+    elif path.startswith(SHOP_PATHS) and state["standby"]:
+        # standby replica: not in service yet, the load balancer skips it
+        resp = JSONResponse({"error": f"{INSTANCE_ID} is a standby replica (not in service)"}, status_code=503)
+    elif path.startswith(SHOP_PATHS):
+        recent_hits.append(time.time())
+        state["hits"] += 1
+        r = rps()
+        if r >= 40 and time.time() - last_spike_log[0] > 3:
+            last_spike_log[0] = time.time()
+            server_logs.append({"timestamp": now(), "instance": INSTANCE_ID, "level": "WARN",
+                                "request_id": "-", "message": f"Traffic spike: {r} req/s on this replica (normal under 5)",
+                                "endpoint": path, "service": "web-tier", "deploy_version": DEPLOYS["surge"][1]})
+        # workers are full, or (during a surge) arrivals outrun what the workers can serve per second
+        if state["inflight"] >= state["capacity"] or (state["fault_mode"] == "surge" and r > state["capacity"] * 2):
+            resp = _overload(path)
+        else:
+            state["inflight"] += 1
+            try:
+                if state["fault_mode"] == "surge":
+                    await asyncio.sleep(random.uniform(0.5, 0.9))   # flash-sale contention
+                resp = await call_next(request)
+            finally:
+                state["inflight"] -= 1
     else:
         resp = await call_next(request)
     resp.headers["X-Instance"] = INSTANCE_ID
@@ -510,10 +573,42 @@ def set_fault(req: FaultReq):
 def reset():
     with lock:
         state.update({"fault_mode": "none", "active_connections": 0, "total_requests": 0,
-                      "total_failures": 0, "login_attempts": 0, "login_failures": 0})
+                      "total_failures": 0, "login_attempts": 0, "login_failures": 0,
+                      "capacity": DEFAULT_CAPACITY, "rejected": 0, "queued": 0, "hits": 0,
+                      "waiting_room": False, "standby": STANDBY_DEFAULT})
+        recent_hits.clear()
         for q in (frontend_errors, server_logs, db_metrics_history, user_reports):
             q.clear()
     return {"status": "reset", "instance": INSTANCE_ID}
+
+
+class CapacityReq(BaseModel):
+    inflight: int = 40
+
+
+class FlagReq(BaseModel):
+    on: bool = True
+
+
+@app.post("/admin/capacity")
+def set_capacity(req: CapacityReq):
+    """'Add workers': raise how many requests this replica handles at once."""
+    state["capacity"] = max(1, min(req.inflight, 500))
+    return {"instance": INSTANCE_ID, "capacity": state["capacity"]}
+
+
+@app.post("/admin/waiting-room")
+def set_waiting_room(req: FlagReq):
+    """Queue extra shoppers (HTTP 429 + auto-retry) instead of failing them."""
+    state["waiting_room"] = req.on
+    return {"instance": INSTANCE_ID, "waiting_room": state["waiting_room"]}
+
+
+@app.post("/admin/standby")
+def set_standby(req: FlagReq):
+    """Scale out: a standby replica (web4) joins the load-balancer pool when standby is turned off."""
+    state["standby"] = req.on
+    return {"instance": INSTANCE_ID, "standby": state["standby"]}
 
 
 @app.post("/admin/restock")
@@ -543,7 +638,7 @@ def status():
             "bug_enabled": state["fault_mode"] == "leak", "instance": INSTANCE_ID,
             "pool_size": POOL_SIZE, "pool_utilization_pct": round(100 * min(active, POOL_SIZE) / POOL_SIZE, 1),
             "service": service, "deploy_version": version, "previous_version": prev,
-            "chaos_down": time.time() < state["down_until"]}
+            "chaos_down": time.time() < state["down_until"], "rps": rps()}
 
 
 @app.get("/health")

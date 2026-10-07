@@ -30,7 +30,7 @@ x-py: &py
   image: myantfarm/services:latest
   restart: unless-stopped
   environment: &pyenv
-    DEMO_TARGETS: "http://web1:8080,http://web2:8080,http://web3:8080"
+    DEMO_TARGETS: "http://web1:8080,http://web2:8080,http://web3:8080,http://web4:8080"
     DEMO_LB_URL: "http://gateway:8080"
     OLLAMA_URLS: "http://gateway:11434"
     MODEL: "${MODEL:-tinyllama}"
@@ -67,19 +67,19 @@ x-ollama: &ollama
 services:
   # ------------------------------------------------------------ gateway
   gateway:
-    image: nginx:1.27-alpine
+    build: ./gateway
+    image: myantfarm/gateway:latest
     restart: unless-stopped
     ports:
       - "${GATEWAY_PORT:-80}:80"
       - "${SITE_PORT:-8080}:8080"
-    volumes:
-      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./gateway/www:/usr/share/nginx/html:ro
 
   # --------------------------------------------- system under observation
   web1: { <<: *web, environment: { <<: *webenv, INSTANCE_ID: web1 } }
   web2: { <<: *web, environment: { <<: *webenv, INSTANCE_ID: web2 } }
   web3: { <<: *web, environment: { <<: *webenv, INSTANCE_ID: web3 } }
+  # standby replica: in the pool but refusing shop traffic until "scale_out" activates it
+  web4: { <<: *web, environment: { <<: *webenv, INSTANCE_ID: web4, STANDBY: "1" } }
 
   # ------------------------------------------------- specialist agents
   agent-frontend:

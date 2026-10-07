@@ -41,6 +41,12 @@ HYPOTHESES = {
         "keywords": ("slow", "query", "index", "latency"),
         "symptom": "checkout is slow and some orders time out",
     },
+    "traffic_surge": {
+        "title": "Traffic surge beyond web-tier capacity (flash-sale overload)",
+        "weights": {"overload": 3, "traffic_spike": 2, "http_503": 2, "user_complaints_down": 1},
+        "keywords": ("traffic", "surge", "capacity", "load", "overload", "scale"),
+        "symptom": "the shop is overloaded by drop traffic and some shoppers see an error",
+    },
     "auth_regression": {
         "title": "Authentication service regression after deployment",
         "weights": {"auth_errors": 3, "login_failures": 2, "user_complaints_login": 1,
@@ -70,8 +76,11 @@ def _score(findings: dict) -> dict:
     return out
 
 
-def _act(priority, type_, owner, action, command):
-    return {"priority": priority, "type": type_, "owner": owner, "action": action, "command": command}
+def _act(priority, type_, owner, action, command, execute=None):
+    a = {"priority": priority, "type": type_, "owner": owner, "action": action, "command": command}
+    if execute:
+        a["execute"] = execute   # the coordinator can run this action itself (POST /incident/execute)
+    return a
 
 
 def _actions(root: str, insts: list[str], all_insts: list[str], dep: dict) -> list[dict]:
@@ -112,6 +121,25 @@ def _actions(root: str, insts: list[str], all_insts: list[str], dep: dict) -> li
         A.append(_act(4, "prevent", "Database team",
                       "Alert on database query latency p95 > 300ms and review EXPLAIN plans for new queries.",
                       "alert rule: db_avg_wait_ms > 300 for 5m"))
+    elif root == "traffic_surge":
+        A.append(_act(1, "mitigate", "SRE on-call",
+                      "Scale out the web tier: bring standby replica web4 into the load-balancer pool.",
+                      "POST /incident/execute {\"action\": \"scale_out\"}  (docker compose up -d --scale web=4)",
+                      execute="scale_out"))
+        A.append(_act(1, "mitigate", "Backend team",
+                      "Raise worker capacity on every replica from 12 to 40 in-flight requests.",
+                      "POST /incident/execute {\"action\": \"raise_capacity\"}  (WORKER_CAPACITY=40)",
+                      execute="raise_capacity"))
+        A.append(_act(2, "mitigate", "Frontend team",
+                      "Turn on the waiting room so shoppers over capacity queue and retry instead of seeing an error.",
+                      "POST /incident/execute {\"action\": \"waiting_room\"}",
+                      execute="waiting_room"))
+        A.append(_act(3, "verify", "Database team",
+                      "Verify the database connection pool keeps up with the extra workers (utilisation under 80%).",
+                      "curl -s http://localhost:8080/admin/status"))
+        A.append(_act(4, "prevent", "SRE on-call",
+                      "Autoscaling rule: add a web replica when in-flight requests stay above 80% of capacity for 30 seconds.",
+                      "alert rule: inflight / capacity > 0.8 for 30s -> scale web +1"))
     elif root == "auth_regression":
         A.append(_act(1, "rollback", "Backend team",
                       f"Rollback {svc} deployment to {prev}: {ver} crashes while signing login tokens "
@@ -148,6 +176,9 @@ def _risk(root: str, findings: dict, insts: list[str], all_insts: list[str]) -> 
         "slow_db_queries": [
             "CREATE INDEX CONCURRENTLY is online but adds write load while it builds.",
             "Raising timeouts holds connections longer and can turn slowness into pool exhaustion."],
+        "traffic_surge": [
+            "More workers per replica raise database load; watch the connection pool after scaling.",
+            "The waiting room delays shoppers instead of failing them; turn it off once traffic drops."],
         "auth_regression": [
             "Rolling back auth-service invalidates tokens signed by v2.3.1; affected users must sign in again.",
             "If the pool stays near 85% after the rollback, something else is holding connections."],

@@ -40,6 +40,7 @@ for ($i = 0; $i -lt 120; $i++) {
 docker compose @files ps
 Write-Host "`nShop        : $base/" -ForegroundColor Green
 Write-Host "Ops console : $base/ops/" -ForegroundColor Green
+Write-Host "Backend     : $base/backend/   (traffic-surge demo)" -ForegroundColor Green
 Write-Host "Website LB  : http://localhost:8080/" -ForegroundColor Green
 Start-Process "$base/ops/"
 Start-Process "$base/"
