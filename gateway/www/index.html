@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Side B: limited vinyl drops</title>
+<meta name="description" content="Small-run vinyl pressings, released in timed drops.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Literata:ital,opsz,wght@0,7..72,400;1,7..72,400&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%231B1F3B'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23FF4F9A'/%3E%3Ccircle cx='16' cy='16' r='1.5' fill='%23EEF0F3'/%3E%3C/svg%3E">
+<style>
+:root{
+  --paper:#EEF0F3; --paper-2:#E2E6EC; --ink:#1B1F3B; --ink-soft:#4A5072; --pink:#FF4F9A; --blue:#3255FF;
+  --yellow:#FFD23F; --vinyl:#0A0A0A; --line:#C9CFDA; --ok:#178A57; --bad:#C8243C;
+  --display:'Bricolage Grotesque',system-ui,sans-serif; --body:'Literata',Georgia,serif;
+  --gutter:clamp(16px,4vw,56px);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.6 var(--body);-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+a{color:var(--blue)}
+:focus-visible{outline:3px solid var(--blue);outline-offset:3px;border-radius:4px}
+[hidden]{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---------- header ---------- */
+.top{display:flex;align-items:center;gap:20px;padding:18px var(--gutter);position:sticky;top:0;z-index:20;
+  background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid transparent;transition:border-color .2s}
+.top.scrolled{border-bottom-color:var(--line)}
+.mark{font:800 30px/1 var(--display);letter-spacing:-.04em;text-decoration:none;color:var(--ink);display:flex;align-items:center;gap:8px}
+.mark svg{width:26px;height:26px}
+.top nav{display:flex;gap:22px;margin-left:24px;font:600 15px var(--display)}
+.top nav a{color:var(--ink);text-decoration:none}
+.top nav a:hover{color:var(--blue)}
+.spacer{flex:1}
+.pill{font:600 15px var(--display);border:1.5px solid var(--ink);background:transparent;border-radius:999px;padding:8px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.pill:hover{background:var(--ink);color:var(--paper)}
+.pill .count{background:var(--pink);color:var(--ink);border-radius:999px;min-width:22px;height:22px;display:inline-grid;place-items:center;font-size:13px;padding:0 6px}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--blue);color:#fff;display:inline-grid;place-items:center;font-size:13px;overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover}
+@media(max-width:720px){.top nav{display:none}.mark{font-size:26px}}
+
+/* ---------- hero: the current drop ---------- */
+.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:clamp(24px,5vw,72px);align-items:center;
+  padding:clamp(24px,5vw,64px) var(--gutter) clamp(40px,7vw,96px);overflow:hidden}
+.deck{position:relative;aspect-ratio:1/1;max-width:640px;width:100%}
+.deck .sleeve{position:absolute;left:0;top:6%;width:78%;aspect-ratio:1;border-radius:3px;box-shadow:0 30px 60px -30px rgba(27,31,59,.55);z-index:2;overflow:hidden}
+.deck .sleeve svg{display:block;width:100%;height:100%}
+.deck .disc{position:absolute;right:0;top:9%;width:72%;aspect-ratio:1;z-index:1;animation:spin 1.8s linear infinite}
+.deck .disc svg{width:100%;height:100%;display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.deck .rpm{position:absolute;right:2%;bottom:4%;font:600 13px var(--display);color:var(--ink-soft)}
+.drop-meta{font:600 15px var(--display);color:var(--ink-soft);display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:14px}
+.drop-meta .clock{color:var(--ink);font-variant-numeric:tabular-nums}
+.hero h1{font:800 clamp(46px,6.2vw,104px)/.88 var(--display);letter-spacing:-.045em;margin:0 0 18px;text-wrap:balance;hyphens:auto;overflow-wrap:break-word}
+.hero .artist{font:600 clamp(20px,2.2vw,28px)/1.2 var(--display);margin:0 0 18px}
+.hero .notes{max-width:46ch;margin:0 0 26px;color:var(--ink-soft)}
+.buyrow{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px}
+.price{font:800 34px var(--display);letter-spacing:-.02em}
+.cta{font:700 18px var(--display);background:var(--pink);color:var(--ink);border:0;border-radius:999px;padding:16px 30px;cursor:pointer;
+  box-shadow:4px 4px 0 var(--ink);transition:transform .08s,box-shadow .08s}
+.cta:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--ink)}
+.cta:active{transform:translate(3px,3px);box-shadow:1px 1px 0 var(--ink)}
+.cta[disabled]{background:var(--paper-2);color:var(--ink-soft);box-shadow:none;cursor:not-allowed}
+.stock{margin-top:22px;max-width:420px}
+.stock .bar{height:10px;background:var(--paper-2);border-radius:99px;overflow:hidden}
+.stock .bar i{display:block;height:100%;background:var(--ink);border-radius:99px;transition:width .6s}
+.stock p{margin:8px 0 0;font:600 15px var(--display)}
+.stock p.low{color:var(--bad)}
+.tracks{margin:26px 0 0;padding:0;list-style:none;columns:2;column-gap:28px;max-width:460px;font-size:15px;color:var(--ink-soft)}
+.tracks li{break-inside:avoid;padding:3px 0;display:flex;gap:10px}
+.tracks li span{font:600 13px var(--display);color:var(--ink);min-width:24px;font-variant-numeric:tabular-nums}
+@media(max-width:860px){.hero{grid-template-columns:1fr}.deck{max-width:460px}}
+
+/* ---------- crate ---------- */
+.crate{padding:0 0 clamp(48px,7vw,96px)}
+.crate header{display:flex;align-items:end;justify-content:space-between;gap:20px;padding:0 var(--gutter);margin-bottom:22px}
+.crate h2,.how h2{font:800 clamp(34px,4.6vw,60px)/1 var(--display);letter-spacing:-.035em;margin:0}
+.crate header p{margin:0;color:var(--ink-soft);max-width:38ch;font-size:15px}
+.rail{scroll-padding-inline:var(--gutter);display:flex;gap:clamp(18px,2.4vw,32px);overflow-x:auto;scroll-snap-type:x mandatory;padding:20px var(--gutter) 28px;scrollbar-width:thin}
+.item{flex:0 0 clamp(220px,24vw,300px);scroll-snap-align:start;position:relative}
+.item .slot{position:relative;aspect-ratio:1;margin-bottom:14px}
+.item .slot .sl{position:absolute;inset:0;z-index:2;border-radius:3px;overflow:hidden;box-shadow:0 18px 30px -22px rgba(27,31,59,.6)}
+.item .slot .sl svg,.item .slot .rc svg{display:block;width:100%;height:100%}
+.item .slot .rc{position:absolute;inset:4%;z-index:1;transition:transform .45s cubic-bezier(.2,.8,.2,1)}
+.item:hover .rc,.item:focus-within .rc{transform:translateX(34%) rotate(40deg)}
+.item h3{font:700 22px/1.1 var(--display);letter-spacing:-.02em;margin:0 0 2px}
+.item .by{margin:0 0 10px;color:var(--ink-soft);font-size:15px}
+.item .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.item .pr{font:700 18px var(--display)}
+.item .left{font:600 13px var(--display);color:var(--ink-soft)}
+.item .left.low{color:var(--bad)}
+.add{font:700 15px var(--display);background:var(--ink);color:var(--paper);border:0;border-radius:999px;padding:9px 16px;cursor:pointer}
+.add:hover{background:var(--blue)}
+.add[disabled]{background:var(--paper-2);color:var(--ink-soft);cursor:not-allowed}
+.soldout .slot{filter:grayscale(.85) contrast(.9)}
+@media (prefers-reduced-motion:reduce){.deck .disc{animation:none}.item .rc{transition:none}}
+
+/* ---------- how drops work ---------- */
+.how{padding:clamp(40px,6vw,80px) var(--gutter);background:var(--ink);color:var(--paper)}
+.how ol{list-style:none;padding:0;margin:34px 0 0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,4vw,56px)}
+.how li{border-top:2px solid var(--pink);padding-top:16px}
+.how li b{display:block;font:800 22px var(--display);margin-bottom:6px}
+.how li p{margin:0;color:#C9CEE6;font-size:16px;max-width:34ch}
+.how .n{font:800 52px/1 var(--display);color:var(--pink);letter-spacing:-.04em;display:block;margin-bottom:6px}
+@media(max-width:760px){.how ol{grid-template-columns:1fr}}
+footer{padding:28px var(--gutter);display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between;font:600 14px var(--display);color:var(--ink-soft)}
+footer a{color:var(--ink-soft)}
+
+/* ---------- drawer + dialogs ---------- */
+.scrim{position:fixed;inset:0;background:rgba(27,31,59,.42);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(440px,100%);background:var(--paper);z-index:50;transform:translateX(102%);
+  transition:transform .28s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;border-left:1.5px solid var(--ink)}
+.drawer.on{transform:none}
+.drawer header{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;border-bottom:1px solid var(--line)}
+.drawer h2{font:800 28px var(--display);margin:0;letter-spacing:-.03em}
+.x{background:none;border:0;font:600 15px var(--display);cursor:pointer;padding:6px 8px;border-radius:6px}
+.x:hover{background:var(--paper-2)}
+.lines{flex:1;overflow:auto;padding:8px 22px}
+.line{display:grid;grid-template-columns:64px 1fr auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.line .th{width:64px;height:64px;border-radius:2px;overflow:hidden}
+.line .th svg{width:100%;height:100%;display:block}
+.line b{font:700 16px/1.2 var(--display);display:block}
+.line small{color:var(--ink-soft);font-size:14px}
+.qty{display:flex;align-items:center;gap:6px;font:600 15px var(--display)}
+.qty button{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--ink);background:none;cursor:pointer;line-height:1}
+.empty{padding:40px 0;color:var(--ink-soft)}
+.empty b{display:block;font:700 20px var(--display);color:var(--ink);margin-bottom:6px}
+.drawer footer{display:block;padding:18px 22px 24px;border-top:1px solid var(--line);color:var(--ink)}
+.sum{display:flex;justify-content:space-between;font:800 22px var(--display);margin-bottom:14px}
+.drawer .cta{width:100%}
+.note{font:400 14px/1.5 var(--body);color:var(--ink-soft);margin:10px 0 0}
+.alert{border:1.5px solid var(--bad);background:#FCE8EC;color:#5B0F1B;border-radius:10px;padding:12px 14px;font-size:15px;margin:0 0 14px}
+.alert b{font-family:var(--display)}
+.done{padding:22px 0}
+.done h3{font:800 30px/1.05 var(--display);letter-spacing:-.03em;margin:0 0 8px}
+.done .oid{font:700 16px var(--display);background:var(--yellow);padding:2px 8px;border-radius:4px}
+
+dialog{border:1.5px solid var(--ink);border-radius:16px;padding:0;width:min(440px,calc(100% - 32px));background:var(--paper);color:var(--ink);box-shadow:8px 8px 0 var(--ink)}
+dialog::backdrop{background:rgba(27,31,59,.45)}
+.dlg{padding:26px 26px 24px}
+.dlg h2{font:800 30px var(--display);letter-spacing:-.03em;margin:0 0 6px}
+.dlg>p{margin:0 0 18px;color:var(--ink-soft);font-size:15px}
+.tabs{display:flex;gap:4px;background:var(--paper-2);border-radius:999px;padding:4px;margin-bottom:18px}
+.tabs button{flex:1;border:0;background:none;border-radius:999px;padding:8px;font:600 15px var(--display);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--paper);box-shadow:0 1px 0 var(--line)}
+label.f{display:block;font:600 14px var(--display);margin-bottom:12px}
+label.f input{display:block;width:100%;margin-top:5px;border:1.5px solid var(--ink);border-radius:10px;padding:11px 12px;background:#fff;font:400 16px var(--body)}
+.or{display:flex;align-items:center;gap:10px;margin:18px 0;color:var(--ink-soft);font:600 13px var(--display)}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+#gbtn{display:flex;justify-content:center;min-height:44px}
+.gnote{font-size:14px;color:var(--ink-soft);text-align:center;margin:0}
+.demo{margin-top:16px;font-size:14px;color:var(--ink-soft)}
+.demo button{background:none;border:0;padding:0;color:var(--blue);text-decoration:underline;cursor:pointer;font:inherit}
+.orders li{list-style:none;border-bottom:1px solid var(--line);padding:12px 0}
+.orders ul{padding:0;margin:0;max-height:50vh;overflow:auto}
+.orders b{font:700 16px var(--display)}
+.toast{visibility:hidden;position:fixed;left:50%;bottom:24px;transform:translate(-50%,140%);background:var(--ink);color:var(--paper);padding:12px 18px;border-radius:999px;
+  font:600 15px var(--display);z-index:60;transition:transform .25s cubic-bezier(.2,.8,.2,1);max-width:calc(100% - 32px)}
+.toast.on{transform:translate(-50%,0);visibility:visible}
+.menu{position:absolute;right:var(--gutter);top:64px;background:var(--paper);border:1.5px solid var(--ink);border-radius:12px;padding:6px;display:none;min-width:200px;box-shadow:4px 4px 0 var(--ink)}
+.menu.on{display:block}
+.menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:9px 12px;border-radius:8px;cursor:pointer;font:600 15px var(--display)}
+.menu button:hover{background:var(--paper-2)}
+.menu .who{padding:8px 12px 10px;border-bottom:1px solid var(--line);margin-bottom:4px;font-size:14px;color:var(--ink-soft)}
+</style>
+</head>
+<body>
+
+<header class="top" id="top">
+  <a class="mark" href="#" aria-label="Side B home">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#1B1F3B"/><circle cx="16" cy="16" r="6" fill="#FF4F9A"/><circle cx="16" cy="16" r="1.5" fill="#EEF0F3"/></svg>
+    Side B
+  </a>
+  <nav aria-label="Sections"><a href="#drop">This drop</a><a href="#crate">The crate</a><a href="#how">How drops work</a></nav>
+  <span class="spacer"></span>
+  <button class="pill" id="acctBtn" aria-haspopup="true">Sign in</button>
+  <button class="pill" id="cartBtn" aria-label="Open cart">Cart <span class="count" id="cartCount">0</span></button>
+  <div class="menu" id="menu" role="menu">
+    <div class="who" id="menuWho"></div>
+    <button role="menuitem" id="ordersBtn">Your orders</button>
+    <button role="menuitem" id="signOutBtn">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <section class="hero" id="drop" aria-label="Current drop">
+    <div class="deck" id="deck" aria-hidden="true"></div>
+    <div>
+      <div class="drop-meta"><span id="dropNo">Drop 014</span><span>Closes in <span class="clock" id="clock">--</span></span></div>
+      <h1 id="heroTitle">Graceful Degradation</h1>
+      <p class="artist" id="heroArtist"></p>
+      <p class="notes" id="heroNotes"></p>
+      <div class="buyrow">
+        <span class="price" id="heroPrice"></span>
+        <button class="cta" id="heroAdd">Add to cart</button>
+      </div>
+      <div class="stock" id="heroStock"></div>
+      <ol class="tracks" id="heroTracks" aria-label="Track list"></ol>
+    </div>
+  </section>
+
+  <section class="crate" id="crate" aria-labelledby="crateH">
+    <header>
+      <h2 id="crateH">The crate</h2>
+      <p>Earlier pressings with copies left. When a record sells out, it isn't pressed again.</p>
+    </header>
+    <div class="rail" id="rail" tabindex="0" aria-label="Records, scroll sideways"></div>
+  </section>
+
+  <section class="how" id="how" aria-labelledby="howH">
+    <h2 id="howH">How drops work</h2>
+    <ol>
+      <li><span class="n">1</span><b>Sign in before the drop</b><p>Use your email or your Google account. Your cart and orders follow you to any device.</p></li>
+      <li><span class="n">2</span><b>Add up to three of each</b><p>Copies aren't held in your cart. Stock goes down only when an order is placed.</p></li>
+      <li><span class="n">3</span><b>Check out</b><p>If checkout fails, nothing is charged and you can try again straight away.</p></li>
+    </ol>
+  </section>
+</main>
+
+<footer>
+  <span>Side B is the demo store for the MyAntFarm incident-response project.</span>
+  <a href="/ops/">Store operations console</a>
+</footer>
+
+<!-- cart drawer -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Cart" aria-hidden="true">
+  <header><h2>Your cart</h2><button class="x" id="closeCart">Close</button></header>
+  <div class="lines" id="lines"></div>
+  <footer id="cartFoot"></footer>
+</aside>
+
+<!-- sign in -->
+<dialog id="authDlg" aria-labelledby="authH">
+  <form class="dlg" id="authForm" method="dialog">
+    <h2 id="authH">Sign in to Side B</h2>
+    <p id="authLead">You need an account to check out.</p>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true" id="tabIn">Sign in</button>
+      <button type="button" role="tab" aria-selected="false" id="tabUp">Create account</button>
+    </div>
+    <div class="alert" id="authErr" hidden></div>
+    <label class="f" id="nameRow" hidden>Name<input id="fName" autocomplete="name"></label>
+    <label class="f">Email<input id="fEmail" type="email" autocomplete="email" required></label>
+    <label class="f">Password<input id="fPass" type="password" autocomplete="current-password" minlength="8" required></label>
+    <button class="cta" id="authSubmit" type="submit" style="width:100%">Sign in</button>
+    <div class="or">or</div>
+    <div id="gbtn"></div>
+    <p class="demo" id="demoHint"></p>
+    <div style="text-align:right;margin-top:8px"><button type="button" class="x" id="authClose">Cancel</button></div>
+  </form>
+</dialog>
+
+<!-- orders -->
+<dialog id="ordersDlg" aria-labelledby="ordH">
+  <div class="dlg orders">
+    <h2 id="ordH">Your orders</h2>
+    <ul id="ordersList"></ul>
+    <div style="text-align:right;margin-top:12px"><button class="x" id="ordersClose">Close</button></div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const API = new URLSearchParams(location.search).get('api') || '/shop-api';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const inr = n => '₹' + Number(n).toLocaleString('en-IN');
+let lastOrder = null, products = [], cart = load('sideb_cart', []), session = load('sideb_session', null), cfg = {}, authMode = 'in', pendingCheckout = false;
+
+function load(k, d){ try{ return JSON.parse(localStorage.getItem(k)) ?? d }catch{ return d } }
+function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)) }catch{} }
+
+async function api(path, opts = {}){
+  const headers = {'Content-Type':'application/json'};
+  if (session?.token) headers.Authorization = 'Bearer ' + session.token;
+  let r;
+  try { r = await fetch(API + path, {...opts, headers}); }
+  catch { return {ok:false, status:0, data:{error:"Can't reach the store. Check your connection and try again."}}; }
+  let data = {}; try { data = await r.json(); } catch {}
+  return {ok:r.ok, status:r.status, data, instance:r.headers.get('X-Instance')};
+}
+
+/* ---------- artwork: sleeves and records, generated per pressing ---------- */
+function cover(p, uid){
+  const [a,b,c] = p.palette, id = 'c'+uid;
+  let art = '';
+  if (p.pattern === 'rings') {
+    for (let i=0;i<9;i++) art += `<circle cx="150" cy="140" r="${20+i*16}" fill="none" stroke="${b}" stroke-width="7"/>`;
+    for (let i=0;i<9;i++) art += `<circle cx="162" cy="150" r="${20+i*16}" fill="none" stroke="${c}" stroke-width="7" style="mix-blend-mode:multiply" opacity=".85"/>`;
+  } else if (p.pattern === 'grid') {
+    for (let x=0;x<6;x++) for (let y=0;y<5;y++) art += `<rect x="${24+x*44}" y="${24+y*44}" width="${18+((x*y)%3)*8}" height="${18+((x+y)%3)*8}" fill="${(x+y)%2?b:c}" style="mix-blend-mode:multiply"/>`;
+  } else if (p.pattern === 'stripes') {
+    for (let i=-6;i<12;i++) art += `<rect x="${i*34}" y="-60" width="16" height="420" fill="${b}" transform="rotate(28 150 150)"/>`;
+    art += `<circle cx="196" cy="116" r="62" fill="${c}" style="mix-blend-mode:multiply"/>`;
+  } else if (p.pattern === 'dots') {
+    for (let x=0;x<12;x++) for (let y=0;y<10;y++){ const r = 2 + 9*Math.abs(Math.sin((x+1)*(y+2)*.35)); art += `<circle cx="${14+x*25}" cy="${14+y*24}" r="${r}" fill="${(x*y)%5?b:c}"/>`; }
+  } else {
+    for (let i=0;i<8;i++){ let d = `M -10 ${40+i*26}`; for (let x=0;x<=320;x+=20) d += ` L ${x} ${40+i*26 + 12*Math.sin(x/28+i)}`; art += `<path d="${d}" fill="none" stroke="${i%2?b:c}" stroke-width="9" style="mix-blend-mode:multiply"/>`; }
+  }
+  const ink = p.palette[0] === '#1B1F3B' ? '#EEF0F3' : '#1B1F3B', F = "'Bricolage Grotesque',system-ui,sans-serif";
+  return `<svg viewBox="0 0 300 300" role="img" aria-label="Sleeve art for ${esc(p.title)}"><defs><clipPath id="${id}"><rect width="300" height="300"/></clipPath></defs>
+    <rect width="300" height="300" fill="${a}"/><g clip-path="url(#${id})">${art}</g>
+    <rect x="0" y="232" width="300" height="68" fill="${a}"/><rect x="0" y="232" width="300" height="2" fill="${ink}" opacity=".9"/>
+    <text x="18" y="262" font-family="${F}" font-weight="800" font-size="25" letter-spacing="-1" fill="${ink}">${esc(p.title.length>20?p.title.slice(0,19)+'…':p.title)}</text>
+    <text x="18" y="284" font-family="${F}" font-weight="600" font-size="13" fill="${ink}" opacity=".85">${esc(p.artist)}</text>
+    <rect x="222" y="10" width="68" height="22" rx="11" fill="${a}"/><text x="256" y="26" text-anchor="middle" font-family="${F}" font-weight="600" font-size="12" fill="${ink}">${esc(p.id.toUpperCase())}</text></svg>`;
+}
+function record(p){
+  const vinyl = /black/.test(p.pressing) ? '#0A0A0A' : p.palette[3];
+  let g = ''; for (let r=58;r<146;r+=5) g += `<circle cx="150" cy="150" r="${r}" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="1"/>`;
+  const half = /half/.test(p.pressing) ? `<path d="M150 2 A148 148 0 0 1 150 298 Z" fill="${p.palette[2]}"/>` : '';
+  return `<svg viewBox="0 0 300 300"><circle cx="150" cy="150" r="148" fill="${vinyl}"/>${half}${g}
+    <path d="M150 20 A130 130 0 0 1 270 110" stroke="rgba(255,255,255,.22)" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <circle cx="150" cy="150" r="52" fill="${p.palette[2]}"/><circle cx="150" cy="150" r="52" fill="none" stroke="rgba(0,0,0,.15)"/>
+    <text x="150" y="134" text-anchor="middle" font-family="'Bricolage Grotesque',system-ui,sans-serif" font-weight="800" font-size="13" fill="#1B1F3B">SIDE B</text>
+    <text x="150" y="176" text-anchor="middle" font-family="'Bricolage Grotesque',system-ui,sans-serif" font-weight="600" font-size="9" fill="#1B1F3B">33⅓ RPM</text>
+    <circle cx="150" cy="150" r="5" fill="#EEF0F3"/></svg>`;
+}
+
+/* ---------- rendering ---------- */
+function stockLine(p){
+  if (p.stock <= 0) return {txt:'Sold out', low:true};
+  const low = p.stock / p.initial_stock < .2;
+  return {txt: `${p.stock} of ${p.initial_stock} left`, low};
+}
+function inCart(id){ return cart.find(l => l.id === id)?.qty || 0; }
+
+function renderHero(){
+  const p = products[0]; if (!p) return;
+  $('dropNo').textContent = 'Drop ' + p.id.split('-')[1];
+  $('heroTitle').textContent = p.title;
+  $('heroArtist').textContent = `${p.artist}, ${p.year}`;
+  $('heroNotes').textContent = `${p.notes} Pressed on ${p.pressing} vinyl, ${p.initial_stock} copies.`;
+  $('heroPrice').textContent = inr(p.price);
+  if (!$('deck').dataset.done){
+    $('deck').innerHTML = `<div class="sleeve">${cover(p,'hero')}</div><div class="disc">${record(p)}</div><span class="rpm">33⅓ rpm</span>`;
+    $('deck').dataset.done = 1;
+  }
+  const s = stockLine(p), pct = Math.max(0, 100 * p.stock / p.initial_stock);
+  $('heroStock').innerHTML = `<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="${p.initial_stock}" aria-valuenow="${p.stock}" aria-label="Copies left"><i style="width:${pct}%"></i></div><p class="${s.low?'low':''}">${s.txt}</p>`;
+  const b = $('heroAdd'); b.disabled = p.stock <= 0 || inCart(p.id) >= 3;
+  b.textContent = p.stock <= 0 ? 'Sold out' : inCart(p.id) >= 3 ? 'Limit reached (3)' : 'Add to cart';
+  $('heroTracks').innerHTML = p.tracks.map((t,i)=>`<li><span>${i<Math.ceil(p.tracks.length/2)?'A':'B'}${i<Math.ceil(p.tracks.length/2)?i+1:i+1-Math.ceil(p.tracks.length/2)}</span>${esc(t)}</li>`).join('');
+}
+function renderCrate(){
+  $('rail').innerHTML = products.slice(1).map((p,i) => {
+    const s = stockLine(p), full = inCart(p.id) >= 3;
+    return `<article class="item ${p.stock<=0?'soldout':''}">
+      <div class="slot"><div class="rc">${record(p)}</div><div class="sl">${cover(p,i)}</div></div>
+      <h3>${esc(p.title)}</h3><p class="by">${esc(p.artist)}, ${p.year}, ${esc(p.pressing)}</p>
+      <div class="row"><span><span class="pr">${inr(p.price)}</span><br><span class="left ${s.low?'low':''}">${s.txt}</span></span>
+      <button class="add" data-id="${p.id}" ${p.stock<=0||full?'disabled':''}>${p.stock<=0?'Sold out':full?'Limit reached':'Add to cart'}</button></div>
+    </article>`; }).join('');
+}
+function renderCart(){
+  const n = cart.reduce((a,l)=>a+l.qty,0);
+  $('cartCount').textContent = n;
+  const lines = cart.map(l => ({...l, p: products.find(p=>p.id===l.id)})).filter(l=>l.p);
+  if (!lines.length && lastOrder){
+    const o = lastOrder;
+    $('lines').innerHTML = `<div class="done"><h3>Order placed</h3><p>Order <span class="oid">${esc(o.order_id)}</span> for ${inr(o.total)}.
+      We'll email ${esc(session?.user.email || 'you')} when your records ship.</p>
+      <ul>${o.items.map(i=>`<li>${i.qty} × ${esc(i.title)}</li>`).join('')}</ul>
+      <p class="note">Handled by store server ${esc(o.instance || '')}.</p></div>`;
+    $('cartFoot').innerHTML = ''; save('sideb_cart', cart); renderHero(); renderCrate(); return;
+  }
+  $('lines').innerHTML = lines.length ? lines.map(l => `<div class="line"><div class="th">${cover(l.p,'t'+l.id)}</div>
+      <div><b>${esc(l.p.title)}</b><small>${esc(l.p.artist)}, ${inr(l.p.price)}</small></div>
+      <div class="qty"><button aria-label="One fewer" data-dec="${l.id}">−</button><span>${l.qty}</span><button aria-label="One more" data-inc="${l.id}" ${l.qty>=3?'disabled':''}>+</button></div></div>`).join('')
+    : `<div class="empty"><b>Your cart is empty</b>Add a record from this drop or the crate.</div>`;
+  const total = lines.reduce((a,l)=>a+l.qty*l.p.price,0);
+  $('cartFoot').innerHTML = lines.length ? `<div id="coErr"></div><div class="sum"><span>Total</span><span>${inr(total)}</span></div>
+      <button class="cta" id="checkoutBtn">${session ? 'Place order' : 'Sign in to check out'}</button>
+      <p class="note">Shipping across India is free. You're charged only when the order is confirmed.</p>` : '';
+  save('sideb_cart', cart);
+  renderHero(); renderCrate();
+}
+function renderAccount(){
+  const b = $('acctBtn');
+  if (session){
+    const u = session.user, init = (u.name||u.email)[0].toUpperCase();
+    b.innerHTML = `<span class="avatar">${u.picture?`<img src="${esc(u.picture)}" alt="">`:esc(init)}</span>${esc((u.name||u.email).split(' ')[0])}`;
+    $('menuWho').textContent = `${u.email}${u.provider==='google'?' (Google)':''}`;
+  } else b.textContent = 'Sign in';
+  renderCart();
+}
+
+/* ---------- actions ---------- */
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('on'),2600); }
+function add(id){
+  const p = products.find(x=>x.id===id); if (!p) return;
+  const l = cart.find(x=>x.id===id);
+  lastOrder = null;
+  if (l){ if (l.qty>=3) return toast('You can buy up to three copies of each record.'); l.qty++; } else cart.push({id, qty:1});
+  renderCart(); toast(`Added “${p.title}”`);
+}
+function openCart(){ $('drawer').classList.add('on'); $('drawer').setAttribute('aria-hidden','false'); $('scrim').classList.add('on'); $('closeCart').focus(); }
+function closeCart(){ if (lastOrder){ lastOrder = null; setTimeout(renderCart, 300); } $('drawer').classList.remove('on'); $('drawer').setAttribute('aria-hidden','true'); $('scrim').classList.remove('on'); }
+
+async function checkout(){
+  if (!session){ pendingCheckout = true; return openAuth('You need an account to check out.'); }
+  const btn = $('checkoutBtn'); btn.disabled = true; btn.textContent = 'Placing order…';
+  const r = await api('/api/checkout', {method:'POST', body: JSON.stringify({items: cart})});
+  if (r.ok){
+    cart = []; lastOrder = {...r.data, instance: r.instance || r.data.instance};
+    renderCart(); refresh();
+  } else if (r.status === 401){
+    session = null; save('sideb_session', null); renderAccount(); pendingCheckout = true; openAuth('Your session ended. Sign in again to finish checking out.');
+  } else {
+    const msg = r.data.message || r.data.error || 'Checkout failed. Nothing was charged.';
+    $('coErr').innerHTML = `<div class="alert" role="alert"><b>Checkout didn't go through.</b> ${esc(msg)}</div>`;
+    btn.disabled = false; btn.textContent = 'Try again';
+  }
+}
+
+/* ---------- auth ---------- */
+function setMode(m){
+  authMode = m;
+  $('tabIn').setAttribute('aria-selected', m==='in'); $('tabUp').setAttribute('aria-selected', m==='up');
+  $('nameRow').hidden = m==='in'; $('authSubmit').textContent = m==='in' ? 'Sign in' : 'Create account';
+  $('authH').textContent = m==='in' ? 'Sign in to Side B' : 'Create your account';
+  $('fPass').autocomplete = m==='in' ? 'current-password' : 'new-password';
+  $('authErr').hidden = true;
+}
+function openAuth(lead){
+  $('authLead').textContent = lead || 'Sign in to check out and see your orders.';
+  setMode('in'); $('authDlg').showModal(); $('fEmail').focus();
+}
+function authError(msg){ $('authErr').textContent = msg; $('authErr').hidden = false; }
+function signedIn(data){
+  session = data; save('sideb_session', data); $('authDlg').close(); renderAccount();
+  toast(`Signed in as ${data.user.name || data.user.email}`);
+  if (pendingCheckout){ pendingCheckout = false; openCart(); }
+}
+async function submitAuth(e){
+  e.preventDefault();
+  const body = {email: $('fEmail').value.trim(), password: $('fPass').value};
+  if (authMode==='up') body.name = $('fName').value.trim();
+  $('authSubmit').disabled = true; $('authSubmit').textContent = authMode==='in' ? 'Signing in…' : 'Creating account…';
+  const r = await api(authMode==='in' ? '/auth/login' : '/auth/register', {method:'POST', body: JSON.stringify(body)});
+  $('authSubmit').disabled = false; setMode(authMode);
+  if (r.ok) signedIn(r.data); else authError(r.data.error || 'Sign-in failed. Try again.');
+}
+async function onGoogle(resp){
+  const r = await api('/auth/google', {method:'POST', body: JSON.stringify({credential: resp.credential})});
+  if (r.ok) signedIn(r.data); else authError(r.data.error || 'Google sign-in failed. Try again.');
+}
+function setupGoogle(){
+  if (!cfg.google_client_id){ $('gbtn').innerHTML = `<p class="gnote">Google sign-in isn't set up on this server yet.</p>`; return; }
+  const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+  s.onload = () => { google.accounts.id.initialize({client_id: cfg.google_client_id, callback: onGoogle});
+    google.accounts.id.renderButton($('gbtn'), {theme:'outline', size:'large', shape:'pill', text:'continue_with', width: 300}); };
+  s.onerror = () => { $('gbtn').innerHTML = `<p class="gnote">Couldn't load Google sign-in. Use email instead.</p>`; };
+  document.head.appendChild(s);
+}
+async function showOrders(){
+  $('menu').classList.remove('on');
+  const r = await api('/api/orders');
+  $('ordersList').innerHTML = !r.ok ? `<li>${esc(r.data.error||'Could not load orders.')}</li>` : r.data.length ? r.data.map(o=>`<li><b>${esc(o.id)}</b>, ${inr(o.total)}, ${new Date(o.created).toLocaleString()}<br>
+      <small>${o.items.map(i=>`${i.qty} × ${esc(i.title)}`).join(', ')}</small></li>`).join('') : `<li>No orders yet. Your next drop is waiting.</li>`;
+  $('ordersDlg').showModal();
+}
+
+/* ---------- countdown: drops close Sunday 21:00 local ---------- */
+function tick(){
+  const now = new Date(), end = new Date(now); end.setDate(now.getDate() + ((7 - now.getDay()) % 7)); end.setHours(21,0,0,0);
+  if (end <= now) end.setDate(end.getDate() + 7);
+  let s = Math.floor((end - now)/1000); const d = Math.floor(s/86400); s%=86400;
+  const h = String(Math.floor(s/3600)).padStart(2,'0'), m = String(Math.floor(s%3600/60)).padStart(2,'0'), x = String(s%60).padStart(2,'0');
+  $('clock').textContent = (d ? d + 'd ' : '') + `${h}:${m}:${x}`;
+}
+
+async function refresh(){
+  const r = await api('/api/products');
+  if (r.ok){ products = r.data; renderCart(); }
+  else if (!products.length) $('rail').innerHTML = `<p style="padding:0 var(--gutter)">The catalogue didn't load. Refresh the page to try again.</p>`;
+}
+
+/* ---------- wiring ---------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-id],[data-inc],[data-dec]');
+  if (t?.dataset.id) add(t.dataset.id);
+  if (t?.dataset.inc) add(t.dataset.inc);
+  if (t?.dataset.dec){ const l = cart.find(x=>x.id===t.dataset.dec); if (l){ l.qty--; if (!l.qty) cart = cart.filter(x=>x!==l); renderCart(); } }
+  if (e.target.id === 'checkoutBtn') checkout();
+  if (!e.target.closest('#menu,#acctBtn')) $('menu').classList.remove('on');
+});
+$('heroAdd').onclick = () => add(products[0]?.id);
+$('cartBtn').onclick = openCart; $('closeCart').onclick = closeCart; $('scrim').onclick = closeCart;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCart(); });
+$('acctBtn').onclick = () => session ? $('menu').classList.toggle('on') : openAuth();
+$('signOutBtn').onclick = () => { session = null; save('sideb_session', null); $('menu').classList.remove('on'); renderAccount(); toast('Signed out'); };
+$('ordersBtn').onclick = showOrders; $('ordersClose').onclick = () => $('ordersDlg').close();
+$('tabIn').onclick = () => setMode('in'); $('tabUp').onclick = () => setMode('up');
+$('authForm').addEventListener('submit', submitAuth);
+$('authClose').onclick = () => { pendingCheckout = false; $('authDlg').close(); };
+addEventListener('scroll', () => $('top').classList.toggle('scrolled', scrollY > 8), {passive:true});
+
+(async () => {
+  tick(); setInterval(tick, 1000);
+  const c = await api('/auth/config'); cfg = c.ok ? c.data : {};
+  if (cfg.demo_email) $('demoHint').innerHTML = `Just looking? <button type="button" id="useDemo">Use the demo account</button>.`;
+  document.addEventListener('click', e => { if (e.target.id === 'useDemo'){ setMode('in'); $('fEmail').value = cfg.demo_email; $('fPass').value = cfg.demo_password; } });
+  setupGoogle();
+  if (session){ const me = await api('/auth/me'); if (!me.ok && me.status === 401){ session = null; save('sideb_session', null); } }
+  renderAccount();
+  await refresh(); setInterval(refresh, 15000);
+})();
+</script>
+</body>
+</html>

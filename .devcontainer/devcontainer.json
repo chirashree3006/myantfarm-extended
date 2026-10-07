@@ -1,0 +1,18 @@
+{
+  // GitHub Codespaces: free cloud machine that runs the whole stack (no card needed).
+  // Open the repo on GitHub -> Code -> Codespaces -> "Create codespace on main".
+  "name": "MyAntFarm-Extended",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.11" }
+  },
+  "hostRequirements": { "cpus": 4, "memory": "16gb" },
+  "forwardPorts": [80, 8080],
+  "portsAttributes": {
+    "80": { "label": "Side B shop + ops console", "onAutoForward": "openBrowser" },
+    "8080": { "label": "Website load balancer" }
+  },
+  "postCreateCommand": "cp -n .env.example .env && pip install -r loadtest/requirements.txt",
+  "postStartCommand": "bash deploy/codespaces-start.sh"
+}

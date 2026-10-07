@@ -1,0 +1,6 @@
+# Shell scripts and nginx config must keep LF endings, even when
+# committed from Windows -- otherwise they break inside Linux containers/VMs.
+*.sh   text eol=lf
+*.conf text eol=lf
+*.yml  text eol=lf
+*.ps1  text eol=crlf

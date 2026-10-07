@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.pytest_cache/
+loadtest/results/*
+!loadtest/results/.gitkeep
+*.key
+*.pem
+demo-website/data/

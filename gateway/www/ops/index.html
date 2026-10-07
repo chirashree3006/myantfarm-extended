@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Side B Ops Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0F1226; --panel:#161A33; --panel2:#11142A; --line:#262B4D; --text:#DDE1F2; --dim:#8A90B5;
+    --pink:#FF4F9A; --blue:#6E89FF; --yellow:#FFD23F; --ok:#3DDC97; --bad:#FF5D6C; --warn:#FFB547;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace; --head:'Bricolage Grotesque',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 var(--mono);
+    background-image:radial-gradient(rgba(110,137,255,.07) 1px,transparent 1px);background-size:22px 22px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 22px;border-bottom:1px solid var(--line);
+    background:rgba(15,18,38,.92);position:sticky;top:0;z-index:5;flex-wrap:wrap;backdrop-filter:blur(6px)}
+  h1{font:800 20px var(--head);letter-spacing:-.02em;margin:0}
+  h1 span{color:var(--pink)} h1 small{font:500 13px var(--head);color:var(--dim);margin-left:10px}
+  h2{font:800 15px var(--head);letter-spacing:-.01em;color:var(--text);margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  h2 .hint{font:400 11px var(--mono);color:var(--dim)}
+  main{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;padding:16px 22px 40px;max-width:1560px;margin:0 auto}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+  .c12{grid-column:span 12}.c8{grid-column:span 8}.c6{grid-column:span 6}.c4{grid-column:span 4}.c5{grid-column:span 5}.c7{grid-column:span 7}
+  @media(max-width:1050px){.c8,.c6,.c4,.c5,.c7{grid-column:span 12}}
+  @media(max-width:600px){main{padding:12px 16px 32px}header{padding:12px 16px}}
+  .pill{display:inline-block;padding:1px 9px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--dim)}
+  .ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.blue{color:var(--blue)}.pink{color:var(--pink)}
+  .pill.ok{border-color:rgba(61,220,151,.45)}.pill.bad{border-color:rgba(255,93,108,.5)}.pill.warn{border-color:rgba(255,181,71,.5)}
+  button{font:600 12px var(--mono);background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:8px 12px;border-radius:6px;cursor:pointer}
+  button:hover{border-color:var(--blue);color:#fff} button:disabled{opacity:.45;cursor:wait}
+  button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
+  button.primary{background:rgba(255,79,154,.14);border-color:rgba(255,79,154,.6);color:var(--pink)}
+  button.danger{border-color:rgba(255,93,108,.5);color:var(--bad)}
+  button.amber{border-color:rgba(255,181,71,.5);color:var(--warn)}
+  button.blue{border-color:rgba(110,137,255,.6);color:var(--blue)}
+  a{color:var(--blue)}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .grp{border-left:2px solid var(--line);padding-left:12px;margin:4px 14px 4px 0}
+  .grp .lbl{font:600 11px var(--mono);color:var(--dim);margin-bottom:6px}
+  input,select{background:var(--panel2);border:1px solid var(--line);color:var(--text);font:12px var(--mono);padding:7px;width:70px;border-radius:6px}
+  select{width:auto}
+  .replicas{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+  .rep{background:var(--panel2);border:1px solid var(--line);padding:10px;border-radius:6px}
+  .rep.down{border-color:var(--bad);background:repeating-linear-gradient(45deg,rgba(255,93,108,.06) 0 8px,transparent 8px 16px)}
+  .rep .nm{font:800 16px var(--head)}
+  .bar{height:8px;background:#20254a;border-radius:4px;overflow:hidden;margin:6px 0}
+  .bar>i{display:block;height:100%;background:var(--ok);transition:width .4s}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}.kv b{color:var(--dim);font-weight:400}
+  .hbar{display:grid;grid-template-columns:96px 1fr 76px;gap:8px;align-items:center;margin:4px 0;font-size:12px}
+  .hbar .bar{margin:0;height:12px}
+  .muted{color:var(--dim)} .small{font-size:11px}
+  pre{white-space:pre-wrap;word-break:break-word;background:var(--panel2);border:1px solid var(--line);padding:10px;border-radius:6px;margin:8px 0;max-height:320px;overflow:auto;font-size:12px}
+  code{color:var(--yellow)}
+  .dq{font:800 40px/1 var(--head);letter-spacing:-.02em}
+  .score{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
+  .score div{background:var(--panel2);border:1px solid var(--line);padding:6px 8px;border-radius:6px}
+  .score span{display:block;font-size:10px;color:var(--dim)}
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+  .card{background:var(--panel2);border:1px solid var(--line);padding:10px;border-radius:6px;font-size:12px}
+  .card .t{font:800 14px var(--head);display:flex;justify-content:space-between;gap:8px;margin-bottom:4px}
+  ol.plan{padding-left:18px;margin:6px 0} ol.plan li{margin:7px 0}
+  .tag{font-size:10px;padding:0 6px;border:1px solid var(--line);border-radius:4px;margin-right:4px}
+  .tag.own{border-color:rgba(110,137,255,.5);color:var(--blue)}
+  #log{max-height:220px;overflow:auto;font-size:11px}
+  #log div{border-bottom:1px dashed var(--line);padding:3px 0}
+  .spin{display:inline-block;width:10px;height:10px;border:2px solid var(--pink);border-right-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:-1px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.spin{animation:none}}
+  .chaos{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+  .chaos button{text-align:left;display:flex;justify-content:space-between;align-items:center}
+  .chaos button.isdown{border-color:var(--bad);color:var(--bad);background:rgba(255,93,108,.08)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)} th{color:var(--dim);font-weight:400}
+  details summary{cursor:pointer;color:var(--dim)}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Side B</span> ops console <small>multi-agent incident response</small></h1>
+  <div class="row">
+    <a class="pill" href="/" target="_blank" rel="noopener">Open the shop</a>
+    <span class="pill" id="gw">gateway …</span>
+    <span class="pill" id="scen">scenario: —</span>
+    <span class="pill" id="llmh">model …</span>
+  </div>
+</header>
+
+<main>
+  <section class="panel c12">
+    <h2>Run an incident <span class="hint">inject a fault on every replica, push shopper traffic, then diagnose</span></h2>
+    <div class="row">
+      <div class="grp"><div class="lbl">1. Fault</div>
+        <div class="row">
+          <button onclick="setScenario('healthy')">Healthy</button>
+          <button class="danger" onclick="setScenario('auth_regression')" title="The reference paper's scenario">Auth regression (paper)</button>
+          <button class="danger" onclick="setScenario('leak')">Connection leak</button>
+          <button class="amber" onclick="setScenario('slow_db')">Slow database</button>
+        </div></div>
+      <div class="grp"><div class="lbl">2. Shopper traffic through the load balancer</div>
+        <div class="row">
+          <label class="muted small">requests <input id="tc" type="number" value="80"></label>
+          <label class="muted small">parallel <input id="tcc" type="number" value="10"></label>
+          <button onclick="traffic()">Send traffic</button>
+        </div></div>
+      <div class="grp"><div class="lbl">3. Diagnose</div>
+        <div class="row">
+          <button class="primary" onclick="runBoth()">C2 vs C3x side by side</button>
+          <button class="blue" onclick="runPaper()" title="Diagnosis → Planner → Risk, as in the paper">Paper C3 pipeline</button>
+        </div></div>
+      <div class="grp"><div class="lbl">4. Fix</div>
+        <div class="row"><button onclick="remediate(true)">Preview fix</button><button class="primary" onclick="remediate(false)">Apply fix</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel c8">
+    <h2>Store replicas <span class="hint" id="lbsum"></span></h2>
+    <div class="replicas" id="replicas"><span class="muted">waiting for status …</span></div>
+  </section>
+  <section class="panel c4">
+    <h2>Last traffic burst</h2>
+    <div id="traffic" class="muted">No traffic sent yet.</div>
+  </section>
+
+  <section class="panel c6">
+    <h2>C2 · single-agent copilot <span class="small" id="s_meta"></span></h2>
+    <div id="single" class="muted">Not run yet. One TinyLlama call over all four data streams.</div>
+  </section>
+  <section class="panel c6">
+    <h2><span id="m_title">C3x · multi-agent brief</span> <span class="small" id="m_meta"></span></h2>
+    <div id="multi" class="muted">Not run yet. Four specialist agents in parallel, then evidence fusion.</div>
+  </section>
+
+  <section class="panel c12">
+    <h2>Work split by team <span class="hint">each team gets only its own evidence and actions; teams with nothing to do aren't paged</span></h2>
+    <div class="grid4" id="tickets"><span class="muted">Run a multi-agent diagnosis to see the tickets.</span></div>
+  </section>
+
+  <section class="panel c12">
+    <h2>Specialist agents</h2>
+    <div class="grid4" id="agents"><span class="muted">Each agent reads one data stream from every replica.</span></div>
+  </section>
+
+  <section class="panel c7">
+    <h2>Load test: simultaneous diagnoses <span class="hint">same incident, K requests at once, SLA to a usable answer</span></h2>
+    <div class="row" style="margin-bottom:10px">
+      <label class="muted small">K <select id="lk"><option>1</option><option selected>4</option><option>8</option><option>16</option></select></label>
+      <label class="muted small">SLA (s) <input id="lsla" type="number" value="60"></label>
+      <button class="primary" onclick="loadTest()">Run load test</button>
+    </div>
+    <div id="load" class="muted">Shows how many diagnoses each design returns within the SLA when incidents pile up.</div>
+  </section>
+
+  <section class="panel c5">
+    <h2>Fault tolerance <span class="hint">crash a component for 60 s (it answers 503)</span></h2>
+    <div class="chaos" id="chaos"></div>
+    <p class="small muted" style="margin-top:10px">Try: crash <b>coord1</b> or <b>agent-database</b> and run C3x, then crash <b>single-agent</b> and run C2. Crash <b>web2</b> and send traffic: shoppers are routed around it.</p>
+  </section>
+
+  <section class="panel c6">
+    <h2>Model tier <button onclick="llmMetrics()" style="padding:3px 8px">refresh</button></h2>
+    <div id="llm" class="muted">—</div>
+  </section>
+  <section class="panel c6">
+    <h2>Event log</h2>
+    <div id="log"></div>
+  </section>
+</main>
+
+<script>
+const API = '/api/multi', SAPI = '/api/single';
+const SVCS = ['web1','web2','web3','coord1','coord2','single-agent','agent-frontend','agent-server','agent-database','agent-users'];
+let scenario = 'healthy';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const log = (m, cls='') => { const d=document.createElement('div'); d.className=cls; d.textContent = new Date().toLocaleTimeString()+'  '+m; $('log').prepend(d); };
+const SC = {healthy:'ok', leak:'bad', slow_db:'warn', auth_regression:'bad'};
+
+async function call(url, body, opts={}) {
+  const r = await fetch(url, {method: body !== undefined ? 'POST' : 'GET', headers: {'Content-Type':'application/json'},
+    body: body !== undefined ? JSON.stringify(body) : undefined, signal: opts.signal});
+  const up = r.headers.get('X-Upstream');
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0,160));
+  const j = await r.json(); Object.defineProperty(j, '__upstream', {value: up, enumerable: false}); return j;
+}
+function busy(on){ document.querySelectorAll('main button').forEach(b => b.disabled = on); }
+const scored = () => scenario === 'healthy' ? undefined : scenario;
+
+async function setScenario(s){
+  busy(true);
+  try{
+    await call(API+'/control/reset', {}); await call(API+'/control/restock', {});
+    if (s !== 'healthy') await call(API+'/control/fault', {mode:s});
+    scenario = s; $('scen').textContent = 'scenario: '+s; $('scen').className = 'pill '+SC[s];
+    log('fault set: '+s+' on all replicas', SC[s]); await status();
+  }catch(e){ log('could not set fault: '+e.message,'bad'); }
+  busy(false);
+}
+
+async function traffic(){
+  busy(true); log('sending shopper traffic (sign-ins + checkouts) …');
+  try{
+    const t = await call(API+'/control/traffic', {count:+$('tc').value, concurrency:+$('tcc').value, mix:'mixed'});
+    const max = Math.max(1, ...Object.values(t.by_instance));
+    $('traffic').innerHTML = `
+      <div class="kv"><b>requests</b><span>${t.requests}, ${t.concurrency} in parallel</span>
+      <b>success</b><span class="${t.success_rate_pct>95?'ok':t.success_rate_pct>50?'warn':'bad'}">${t.success_rate_pct}%</span>
+      <b>throughput</b><span>${t.throughput_rps} req/s</span>
+      <b>latency</b><span>p50 ${t.latency_ms.p50}ms, p95 ${t.latency_ms.p95}ms</span>
+      <b>status</b><span>${Object.entries(t.by_status).map(([k,v])=>`${k}×${v}`).join(', ')}</span></div>
+      <div style="margin-top:10px" class="small muted">load balancer distribution</div>
+      ${Object.entries(t.by_instance).map(([k,v])=>`<div class="hbar"><span>${esc(k)}</span>
+        <div class="bar"><i style="width:${100*v/max}%;background:var(--blue)"></i></div><span>${v} (${Math.round(100*v/t.requests)}%)</span></div>`).join('')}`;
+    log(`traffic: ${t.success_rate_pct}% ok, ${t.throughput_rps} req/s`, t.success_rate_pct>95?'ok':'warn');
+    await status();
+  }catch(e){ log('traffic failed: '+e.message,'bad'); }
+  busy(false);
+}
+
+function dqBlock(dq){
+  if(!dq) return '<p class="small muted">No DQ score for the healthy scenario.</p>';
+  const c = dq.dq>0.5?'ok':dq.dq>=.4?'warn':'bad';
+  return `<div class="row" style="justify-content:space-between"><div><div class="small muted">decision quality (paper rubric)</div>
+    <div class="dq ${c}">${dq.dq.toFixed(3)}</div></div>
+    <div style="text-align:right"><span class="pill ${dq.actionable?'ok':'bad'}">${dq.actionable?'actionable (DQ > 0.5)':'not actionable'}</span><br>
+    <span class="small ${dq.root_cause_correct?'ok':'bad'}">root cause ${dq.root_cause_correct?'correct':'missed'}</span></div></div>
+    <div class="score"><div><span>validity ×0.4</span>${dq.validity}</div><div><span>specificity ×0.3</span>${dq.specificity}</div>
+    <div><span>correctness ×0.3</span>${dq.correctness}</div><div><span>actions</span>${dq.actions}</div></div>`;
+}
+
+async function runSingle(){
+  $('single').innerHTML = '<span class="spin"></span> one TinyLlama call over everything …';
+  try{
+    const s = await call(SAPI+'/analyze', {scenario: scored()});
+    $('s_meta').innerHTML = `<span class="pill">${(s.elapsed_ms/1000).toFixed(1)}s</span>`;
+    $('single').innerHTML = dqBlock(s.dq) + `<div class="small muted">answer</div><pre>${esc(s.answer)}</pre>
+      ${s.dq?`<details><summary class="small">actions the scorer extracted (${s.dq.extracted_actions.length})</summary><pre>${s.dq.extracted_actions.map(esc).join('\n')||'(none)'}</pre></details>`:''}
+      <details><summary class="small">what the model was given</summary><pre>${esc(s.incident_description)}</pre></details>`;
+    log(`C2 done in ${(s.elapsed_ms/1000).toFixed(1)}s, DQ ${s.dq?.dq ?? '-'}`);
+  }catch(e){ $('single').innerHTML = `<p class="bad">C2 failed: ${esc(e.message)}</p><p class="small muted">The copilot is a single service with no fallback.</p>`; log('C2 failed: '+e.message,'bad'); }
+}
+
+function renderTickets(b){
+  $('tickets').innerHTML = b.team_tickets.length ? b.team_tickets.map(t => `
+    <div class="card" style="${t.page?'':'opacity:.5'}"><div class="t"><span>${esc(t.team)}</span>
+      <span class="${t.page?(t.priority===1?'bad':'warn'):'muted'}">${t.page?'P'+t.priority:'not paged'}</span></div>
+      ${t.actions.map(a=>`<div style="margin:6px 0"><span class="tag">${esc(a.type)}</span>${esc(a.action)}<br><code>${esc(a.command)}</code></div>`).join('')}
+      ${t.evidence.length?`<details><summary class="small">evidence (${t.evidence.length})</summary>${t.evidence.map(e=>`<div class="small">› ${esc(e)}</div>`).join('')}</details>`:''}
+    </div>`).join('') : '<span class="muted">No incident, nobody paged.</span>';
+}
+
+async function runMulti(){
+  $('m_title').textContent = 'C3x · multi-agent brief';
+  $('multi').innerHTML = '<span class="spin"></span> 4 agents analysing in parallel, then fusion …';
+  try{
+    const m = await call(API+'/incident/analyze', {scenario: scored(), mode:'extended'});
+    const b = m.brief, d = b.diagnosis;
+    $('m_meta').innerHTML = `<span class="pill">${(m.timing_ms.total/1000).toFixed(1)}s</span> <span class="pill blue">${esc(m.served_by)}</span>`;
+    const conf = d.id==='none'?'ok':d.confidence_pct>=70?'bad':'warn';
+    $('multi').innerHTML = dqBlock(m.dq) + `
+      <div class="small muted">root cause</div>
+      <div style="font:800 17px var(--head)" class="${conf}">${esc(d.title)}</div>
+      <div class="small muted">${d.confidence_pct}% confidence, corroborated by ${d.supporting_agents.length} agents (${esc(d.supporting_agents.join(', ')||'none')}); summary by <span class="pink">${esc(b.synthesis.mode)}</span>
+      ${m.degraded_agents.length?`; <span class="warn">degraded: ${esc(m.degraded_agents.join(', '))}</span>`:''}</div>
+      <pre>${esc(b.summary)}</pre>
+      ${b.evidence_chain.length?`<details open><summary class="small">evidence chain</summary><pre>${b.evidence_chain.map(esc).join('\n')}</pre></details>`:''}
+      ${b.action_plan.length?`<div class="small muted">action plan</div><ol class="plan">${b.action_plan.map(a=>`<li><span class="tag">${esc(a.type)}</span><span class="tag own">${esc(a.owner)}</span>${esc(a.action)}<br><code>$ ${esc(a.command)}</code></li>`).join('')}</ol>`:''}
+      <div class="small muted">risk <span class="${b.risk.level==='high'?'bad':b.risk.level==='medium'?'warn':'ok'}">${esc(b.risk.level)}</span>, blast radius ${b.risk.blast_radius_pct}%, ${esc(b.risk.customer_impact)}</div>
+      <ul class="small">${b.risk.action_risks.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`;
+    renderTickets(b);
+    $('agents').innerHTML = Object.values(m.agents).map(a => `
+      <div class="card"><div class="t"><span>${esc(a.agent)}</span>
+        <span class="${a.status==='critical'?'bad':a.status==='degraded'?'warn':'ok'}">${esc(a.status)}</span></div>
+        <div class="small muted">${esc(a.mode)}, ${(a.round_trip_ms/1000).toFixed(1)}s ${a.via?'via '+esc(a.via):''}</div>
+        <div style="margin:6px 0">${a.signals.map(s=>`<span class="tag">${esc(s)}</span>`).join('') || '<span class="muted small">no signals</span>'}</div>
+        ${a.evidence.map(e=>`<div class="small">› ${esc(e)}</div>`).join('')}
+        <div class="small" style="margin-top:6px"><span class="pink">TinyLlama:</span> ${a.llm.ok ? '“'+esc(a.llm.observation)+'”' : '<span class="muted">'+esc(a.llm.error||'n/a')+'</span>'}
+        ${a.llm.agrees_with_rules===true?'<span class="ok"> agrees with the data</span>':a.llm.agrees_with_rules===false?'<span class="warn"> disagrees with the data</span>':''}</div>
+      </div>`).join('');
+    log(`C3x done in ${(m.timing_ms.total/1000).toFixed(1)}s on ${m.served_by}, DQ ${m.dq?.dq ?? '-'}, ${b.teams_paged.length} teams paged`,'ok');
+  }catch(e){ $('multi').innerHTML = `<p class="bad">C3x failed: ${esc(e.message)}</p>`; log('C3x failed: '+e.message,'bad'); }
+}
+
+async function runPaper(){
+  busy(true);
+  $('m_title').textContent = 'C3 · paper pipeline (Diagnosis → Planner → Risk)';
+  $('multi').innerHTML = '<span class="spin"></span> three agents in sequence …';
+  try{
+    const p = await call(API+'/incident/analyze', {scenario: scored(), mode:'paper'});
+    $('m_meta').innerHTML = `<span class="pill">${(p.timing_ms.total/1000).toFixed(1)}s</span> <span class="pill blue">${esc(p.served_by)}</span>`;
+    $('multi').innerHTML = dqBlock(p.dq) + `<div class="small muted">diagnosis agent</div><pre>${esc(p.diagnosis)}</pre>
+      <div class="small muted">planner agent (actions)</div><ol class="plan">${p.actions.map(a=>`<li>${esc(a)}</li>`).join('') || '<li class="muted">no numbered steps</li>'}</ol>
+      <div class="small muted">risk agent</div><pre>${esc(p.risk)}</pre>`;
+    log(`paper C3 done in ${(p.timing_ms.total/1000).toFixed(1)}s, DQ ${p.dq?.dq ?? '-'}`);
+  }catch(e){ $('multi').innerHTML = `<p class="bad">${esc(e.message)}</p>`; }
+  busy(false);
+}
+
+async function runBoth(){ busy(true); await Promise.all([runSingle(), runMulti()]); busy(false); llmMetrics(); }
+
+async function remediate(dry){
+  try{
+    const r = await call(API+'/incident/remediate', {dry_run:dry});
+    log(`${dry?'fix preview':'FIX APPLIED'}: ${r.diagnosis} → ${(r.would_execute||r.executed||[]).join('; ')||'nothing to do'}`, dry?'':'ok');
+    if(!dry){ scenario='healthy'; $('scen').textContent='scenario: healthy'; $('scen').className='pill ok'; }
+    status();
+  }catch(e){ log('fix failed: '+e.message,'bad'); }
+}
+
+async function loadTest(){
+  const k = +$('lk').value, sla = +$('lsla').value;
+  if (scenario === 'healthy'){ await setScenario('leak'); await traffic(); }
+  busy(true);
+  $('load').innerHTML = `<span class="spin"></span> ${k} simultaneous diagnoses per design …`;
+  const one = async (cond) => {
+    const ctl = new AbortController(), t0 = performance.now(), timer = setTimeout(()=>ctl.abort(), sla*1000);
+    try{
+      const r = cond==='C2' ? await call(SAPI+'/analyze', {scenario: scored()}, {signal: ctl.signal})
+                            : await call(API+'/incident/analyze', {scenario: scored(), mode:'extended'}, {signal: ctl.signal});
+      const ok = cond==='C2' ? r.llm.ok : true;
+      return {ok, s:(performance.now()-t0)/1000, dq: r.dq?.dq ?? 0, by: r.served_by, deg: (r.degraded_agents||[]).length};
+    }catch(e){ return {ok:false, s:sla, dq:0, err: e.name==='AbortError'?'missed SLA':e.message.slice(0,40)}; }
+    finally{ clearTimeout(timer); }
+  };
+  const res = {};
+  for (const cond of ['C2','C3x']) res[cond] = await Promise.all(Array.from({length:k}, () => one(cond)));
+  const row = (cond) => { const r = res[cond], ok = r.filter(x=>x.ok), lat = ok.map(x=>x.s).sort((a,b)=>a-b);
+    return {succ: Math.round(100*ok.length/k), p50: lat.length?lat[Math.floor(lat.length/2)].toFixed(1):'—',
+      max: lat.length?lat[lat.length-1].toFixed(1):'—', dq: (r.reduce((a,x)=>a+x.dq,0)/k).toFixed(3),
+      by: [...new Set(ok.map(x=>x.by))].join(', '), deg: ok.length?(ok.reduce((a,x)=>a+(x.deg||0),0)/ok.length).toFixed(1):'—',
+      errs: [...new Set(r.filter(x=>!x.ok).map(x=>x.err||'no answer'))].join(', ')}; };
+  const a = row('C2'), b = row('C3x');
+  $('load').innerHTML = `<table><tr><th></th><th>within SLA</th><th>p50 (s)</th><th>slowest (s)</th><th>mean DQ</th><th>served by</th><th>degraded agents</th></tr>
+    <tr><td>C2 single agent</td><td class="${a.succ>=90?'ok':'bad'}">${a.succ}%</td><td>${a.p50}</td><td>${a.max}</td><td>${a.dq}</td><td>${esc(a.by)}</td><td>—</td></tr>
+    <tr><td>C3x multi-agent</td><td class="${b.succ>=90?'ok':'bad'}">${b.succ}%</td><td>${b.p50}</td><td>${b.max}</td><td>${b.dq}</td><td>${esc(b.by)}</td><td>${b.deg}</td></tr></table>
+    ${['C2','C3x'].map(c=>`<div class="hbar"><span>${c}</span><div class="bar"><i style="width:${row(c).succ}%;background:${c==='C2'?'var(--dim)':'var(--pink)'}"></i></div><span>${row(c).succ}%</span></div>`).join('')}
+    ${a.errs?`<p class="small bad">C2 failures: ${esc(a.errs)}</p>`:''}${b.errs?`<p class="small bad">C3x failures: ${esc(b.errs)}</p>`:''}`;
+  log(`load K=${k}: C2 ${a.succ}% vs C3x ${b.succ}% within ${sla}s`, b.succ>=a.succ?'ok':'warn');
+  busy(false);
+}
+
+async function chaosToggle(svc, isDown){
+  try{ await call(`/chaos/${svc}/${isDown?'up':'down'}`, {seconds:60}); log(`${svc} ${isDown?'restored':'crashed for 60 s'}`, isDown?'ok':'bad'); }
+  catch(e){ log(`chaos ${svc}: ${e.message}`,'bad'); }
+  chaosStatus();
+}
+async function chaosStatus(){
+  const st = await Promise.all(SVCS.map(s => call(`/chaos/${s}/status`).catch(()=>({down:null}))));
+  $('chaos').innerHTML = SVCS.map((s,i) => `<button class="${st[i].down?'isdown':''}" onclick="chaosToggle('${s}', ${!!st[i].down})">
+    <span>${s}</span><span class="small">${st[i].down===null?'?':st[i].down?'down '+st[i].seconds_left+'s':'up'}</span></button>`).join('');
+}
+
+async function status(){
+  try{
+    const s = await call(API+'/control/status');
+    const reps = Object.values(s).filter(x=>!x.error);
+    const tot = reps.reduce((a,r)=>a+r.total_requests+(r.login_attempts||0),0);
+    $('lbsum').textContent = tot ? 'share of traffic: '+reps.map(r=>`${r.instance} ${Math.round(100*(r.total_requests+(r.login_attempts||0))/tot)}%`).join(', ') : '';
+    $('replicas').innerHTML = Object.entries(s).map(([k,r]) => r.error ? `<div class="rep down"><div class="nm bad">${esc(k)}</div>${esc(r.error)}: load balancer routes around it</div>` : `
+      <div class="rep"><div class="row" style="justify-content:space-between"><span class="nm">${esc(r.instance)}</span>
+      <span class="pill ${SC[r.fault_mode==='none'?'healthy':r.fault_mode]}">${esc(r.fault_mode)}</span></div>
+      <div class="bar"><i style="width:${r.pool_utilization_pct}%;background:${r.pool_utilization_pct>=100?'var(--bad)':r.pool_utilization_pct>=75?'var(--warn)':'var(--ok)'}"></i></div>
+      <div class="kv"><b>db pool</b><span>${r.pool_utilization_pct}%</span>
+      <b>checkouts</b><span>${r.total_requests}</span><b>sign-ins</b><span>${r.login_attempts} (${r.login_failures} failed)</span>
+      <b>failures</b><span class="${r.total_failures?'bad':''}">${r.total_failures}</span>
+      <b>deploy</b><span>${esc(r.service)} ${esc(r.deploy_version)}</span></div></div>`).join('');
+    $('gw').textContent='gateway up, coordinator '+(s.__upstream||''); $('gw').className='pill ok';
+  }catch(e){ $('gw').textContent='gateway or coordinators down'; $('gw').className='pill bad'; }
+}
+
+async function llmMetrics(){
+  try{
+    const m = await call(API+'/metrics');
+    const h = m.llm_health || {}, up = Object.values(h).some(x=>x.up && x.model_loaded);
+    $('llmh').textContent = up ? m.llm.model+' ready' : 'model not ready'; $('llmh').className = 'pill '+(up?'ok':'warn');
+    const ag = Object.entries(m.llm.by_agent);
+    $('llm').innerHTML = `<div class="small muted">coordinator ${esc(m.instance)}, backend ${esc(m.llm.backends.join(', '))} (Nginx spreads calls over ollama1/ollama2)</div>
+      ${ag.length?`<pre>${ag.map(([k,v])=>`${k.padEnd(14)} calls ${String(v.calls).padStart(3)}  failed ${v.failures}  avg ${v.avg_latency_ms}ms  p95 ${v.p95_ms}ms`).join('\n')}</pre>`:'<div class="small muted">No model calls on this coordinator yet.</div>'}`;
+  }catch(e){ $('llm').textContent = e.message; }
+}
+
+status(); llmMetrics(); chaosStatus();
+setInterval(status, 3000); setInterval(llmMetrics, 15000); setInterval(chaosStatus, 5000);
+</script>
+</body>
+</html>

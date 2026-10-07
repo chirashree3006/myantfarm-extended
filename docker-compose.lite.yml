@@ -1,0 +1,12 @@
+# Lite override for small machines / VMs (< 6 GB RAM): one TinyLlama
+# replica instead of two. The gateway keeps ollama2 in its upstream but
+# marks it down automatically because the name never resolves.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.lite.yml up -d --build
+services:
+  ollama2:
+    profiles: ["scale"]
+  agent-frontend: { environment: { LLM_MAX_CONCURRENCY: "2" } }
+  agent-server:   { environment: { LLM_MAX_CONCURRENCY: "2" } }
+  agent-database: { environment: { LLM_MAX_CONCURRENCY: "2" } }
+  agent-users:    { environment: { LLM_MAX_CONCURRENCY: "2" } }
