@@ -8,6 +8,8 @@ Coordinator microservice (2 replicas behind the load balancer).
     POST /incident/remediate -> apply the mitigation on the demo site
     POST /control/reset | /control/fault | /control/traffic | /control/restock
     GET  /control/status, /health, /metrics
+    POST /control/ambient {"on": true}   background shoppers (sign in, browse, buy, sign out)
+    GET  /control/activity               latest log lines from every replica, newest first
     POST /chaos/down|up
 
 If an agent service is unreachable the coordinator runs that agent
@@ -15,7 +17,9 @@ in-process (degraded mode) instead of failing the whole analysis.
 """
 
 import asyncio
+import random
 import time
+import zlib
 
 import httpx
 from fastapi import FastAPI
@@ -282,6 +286,110 @@ async def control_logs(instance: str = "web1", limit: int = 15):
         return JSONResponse({"error": f"{instance} unreachable ({type(e).__name__})"}, status_code=502)
 
 
+# ---------------------------------------------------------------------------
+# Background shoppers: a normal day on the shop. A handful of simulated people
+# sign in (sometimes mistyping the password), browse, check out and sign out,
+# spread across the replicas by the load balancer. Each coordinator replica
+# drives its own half of the shoppers; the on/off switch lives on the shop
+# replicas (state["ambient"]) so both coordinators agree.
+# ---------------------------------------------------------------------------
+SIM_SHOPPERS = ["Aarav Mehta", "Diya Sharma", "Kabir Rao", "Ananya Iyer", "Vihaan Gupta", "Meera Nair",
+                "Rohan Das", "Isha Kapoor", "Arjun Reddy", "Sara Thomas", "Dev Malhotra", "Nisha Pillai",
+                "Ira Banerjee", "Aditya Joshi"]
+SIM_PASSWORD = "vinylfan2026"
+ambient_stats = {"actions": 0, "signed_in": 0, "last": ""}
+
+
+def _sim_email(name: str) -> str:
+    return name.lower().replace(" ", ".") + "@shoppers.sideb.store"
+
+
+async def _ambient_loop():
+    me = zlib.crc32(config.INSTANCE_ID.encode()) % 2          # coord1 and coord2 take different halves
+    mine = [n for i, n in enumerate(SIM_SHOPPERS) if i % 2 == me] or SIM_SHOPPERS
+    tokens: dict[str, str] = {}
+    base = config.DEMO_LB_URL
+    await asyncio.sleep(8)
+    async with httpx.AsyncClient(timeout=10) as c:
+        for n in mine:   # make sure the accounts exist (409 = already there)
+            try:
+                r = await c.post(f"{base}/auth/register", json={"email": _sim_email(n), "password": SIM_PASSWORD, "name": n})
+                if r.status_code == 200:   # a new account comes back signed in; sign it out again
+                    await c.post(f"{base}/auth/logout", headers={"Authorization": f"Bearer {r.json()['token']}"})
+            except Exception:  # noqa: BLE001
+                pass
+        tokens.clear()   # registering signs in; start everyone signed out
+        on, checked = True, 0.0
+        while True:
+            try:
+                if time.time() - checked > 3:
+                    checked = time.time()
+                    st = await c.get(f"{config.DEMO_TARGETS[0]}/admin/status")
+                    on = bool(st.json().get("ambient", True))
+                if not on:
+                    tokens.clear()
+                    await asyncio.sleep(2)
+                    continue
+                n = random.choice(mine)
+                hdr = {"Authorization": f"Bearer {tokens[n]}"} if n in tokens else {}
+                if n not in tokens:
+                    wrong = random.random() < 0.15
+                    r = await c.post(f"{base}/auth/login", json={"email": _sim_email(n),
+                                                                "password": "vinylfan" if wrong else SIM_PASSWORD})
+                    if r.status_code == 200:
+                        tokens[n] = r.json()["token"]
+                    what = "sign-in (wrong password)" if wrong else "sign-in"
+                else:
+                    roll = random.random()
+                    if roll < 0.55:
+                        await c.get(f"{base}/api/products", headers=hdr)
+                        r = await c.post(f"{base}/api/presence", headers=hdr)
+                        what = "browse"
+                    elif roll < 0.72:
+                        r = await c.post(f"{base}/api/checkout", headers=hdr)
+                        what = "checkout"
+                    else:
+                        r = await c.post(f"{base}/auth/logout", headers=hdr)
+                        tokens.pop(n, None)
+                        what = "sign-out"
+                ambient_stats.update(actions=ambient_stats["actions"] + 1, signed_in=len(tokens),
+                                     last=f"{n}: {what} -> {r.status_code}")
+            except Exception:  # noqa: BLE001
+                await asyncio.sleep(1)
+            await asyncio.sleep(random.uniform(0.6, 1.8))
+
+
+@app.on_event("startup")
+async def _start_ambient():
+    asyncio.create_task(_ambient_loop())
+
+
+class AmbientRequest(BaseModel):
+    on: bool = True
+
+
+@app.post("/control/ambient")
+async def control_ambient(req: AmbientRequest):
+    return await _fan("POST", "/admin/ambient", json={"on": req.on})
+
+
+@app.get("/control/activity")
+async def control_activity(limit: int = 30):
+    """Newest log lines from every replica, merged: what the shop is doing right now."""
+    limit = max(1, min(limit, 100))
+    async with httpx.AsyncClient(timeout=8) as c:
+        async def one(t):
+            try:
+                r = await c.get(f"{t}/logs/server", params={"limit": limit})
+                return r.json() if r.status_code == 200 else []
+            except Exception:  # noqa: BLE001
+                return []
+        res = await asyncio.gather(*[one(t) for t in config.DEMO_TARGETS])
+    lines = sorted((x for rs in res for x in rs), key=lambda x: x.get("timestamp", ""), reverse=True)[:limit]
+    return {"lines": [{k: x.get(k) for k in ("timestamp", "instance", "level", "message", "endpoint")} for x in lines],
+            "ambient": dict(ambient_stats)}
+
+
 @app.get("/control/live")
 async def control_live():
     st = await _fan("GET", "/admin/status")
@@ -292,7 +400,7 @@ async def control_live():
             continue
         reps.append({k: v.get(k) for k in ("instance", "rps", "inflight", "capacity", "standby", "waiting_room",
                                             "rejected", "queued", "hits", "fault_mode", "total_requests", "login_attempts",
-                                            "chaos_down")})
+                                            "chaos_down", "ambient")})
     up = [r for r in reps if not r.get("down")]
     return {"t": time.time(), "surge": dict(surge_stats), "replicas": reps,
             "rps": round(sum(r["rps"] or 0 for r in up), 1),

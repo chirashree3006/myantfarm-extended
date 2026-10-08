@@ -56,6 +56,15 @@ Things to try on the shop while a fault is on: with *Connection leak*, checkouts
 message and nothing is charged. With *Auth regression*, about 45% of sign-ins fail. Crash `web2`
 on the ops console and keep shopping: the load balancer routes around it.
 
+### Normal-day activity
+
+The coordinators run a few background shoppers (14 simulated people) that sign in, sometimes
+mistype a password, browse, check out and sign out, spread across web1-web3 by the load balancer.
+The backend console shows them in **Live activity** (server logs from every replica, newest first)
+and **Shoppers signed in**. Switch them off with the *Normal-day shoppers* checkbox, or
+`POST /api/multi/control/ambient {"on": false}`. `benchmark.py` and `resilience.py` switch them off
+automatically so the experiments measure only their own traffic.
+
 ### Traffic-surge demo (backend on-call console)
 
 Open **http://localhost/backend/** next to the shop.

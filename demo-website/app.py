@@ -69,7 +69,8 @@ FAULT_MODES = ("none", "leak", "slow_db", "auth_regression", "surge")
 # surge makes every request slow (hot product rows, DB contention), so the
 # workers fill up and extra requests are rejected with 503 -- the site "crashes".
 DEFAULT_CAPACITY = int(os.getenv("WORKER_CAPACITY", "12"))
-STANDBY_DEFAULT = os.getenv("STANDBY", "0") == "1"   # web4 starts as a standby replica
+STANDBY_DEFAULT = os.getenv("STANDBY", "0") == "1"
+AMBIENT_DEFAULT = os.getenv("AMBIENT", "1") == "1"   # background shoppers on a normal day   # web4 starts as a standby replica
 SHOP_PATHS = ("/auth/", "/api/")
 # (service that was just deployed, its version, last good version)
 DEPLOYS = {
@@ -91,7 +92,7 @@ state = {"fault_mode": "none", "active_connections": 0, "total_requests": 0,
          "total_failures": 0, "login_attempts": 0, "login_failures": 0,
          "deploy_time": datetime.now(timezone.utc).isoformat(), "down_until": 0.0,
          "capacity": DEFAULT_CAPACITY, "inflight": 0, "rejected": 0, "queued": 0, "hits": 0,
-         "waiting_room": False, "standby": STANDBY_DEFAULT}
+         "waiting_room": False, "standby": STANDBY_DEFAULT, "ambient": AMBIENT_DEFAULT}
 recent_hits: deque = deque(maxlen=20000)     # timestamps of shop requests (for req/s)
 last_spike_log = [0.0]
 lock = threading.Lock()
@@ -332,6 +333,15 @@ def _frontend_error(request_id: str, message: str, status_code: int, page: str =
                             "message": message, "page": page, "status_code": status_code})
 
 
+def _rid(kind: str) -> str:
+    return f"{INSTANCE_ID}-{kind}_{secrets.token_hex(3)}"
+
+
+def _who(email: str) -> str:
+    """First part of an email, for log lines (never the full address)."""
+    return (email or "someone").split("@")[0]
+
+
 def _user_report(text: str):
     user_reports.append({"timestamp": now(), "instance": INSTANCE_ID,
                          "ticket_id": f"tix_{INSTANCE_ID}_{len(user_reports) + 1:04d}", "text": text})
@@ -433,6 +443,7 @@ def register(req: RegisterReq):
             user = con.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
     except sqlite3.IntegrityError:
         return err("An account with this email already exists. Sign in instead.", 409)
+    _log("INFO", _rid("auth"), f"New account: {user['name']} signed up", endpoint="/auth/register")
     return issue_token(user)
 
 
@@ -444,7 +455,9 @@ def login(req: LoginReq):
     with db() as con:
         user = con.execute("SELECT * FROM users WHERE email=?", (req.email.strip().lower(),)).fetchone()
     if not user or not check_pw(req.password, user["pw_hash"]):
+        _log("WARN", _rid("auth"), f"Sign-in rejected: wrong password for {_who(req.email)}", endpoint="/auth/login")
         return err("That email and password don't match an account.", 401)
+    _log("INFO", _rid("auth"), f"Signed in: {user['name'] or _who(user['email'])} (password)", endpoint="/auth/login")
     return issue_token(user)
 
 
@@ -471,6 +484,7 @@ async def google_login(req: GoogleReq):
                     (email, info.get("name") or email.split("@")[0], "google", info.get("picture"), now()))
         con.execute("UPDATE users SET picture=COALESCE(?, picture) WHERE email=?", (info.get("picture"), email))
         user = con.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+    _log("INFO", _rid("auth"), f"Signed in: {user['name'] or _who(email)} (Google)", endpoint="/auth/google")
     return issue_token(user)
 
 
@@ -518,6 +532,7 @@ def logout(authorization: str | None = Header(None)):
     if u:
         with db() as con:
             con.execute("DELETE FROM presence WHERE user_id=?", (int(u["sub"]),))
+        _log("INFO", _rid("auth"), f"Signed out: {u.get('name') or _who(u.get('email', ''))}", endpoint="/auth/logout")
     return {"ok": True}
 
 
@@ -652,6 +667,12 @@ def set_waiting_room(req: FlagReq):
     """Queue extra shoppers (HTTP 429 + auto-retry) instead of failing them."""
     state["waiting_room"] = req.on
     return {"instance": INSTANCE_ID, "waiting_room": state["waiting_room"]}
+
+
+@app.post("/admin/ambient")
+def set_ambient(req: FlagReq):
+    state["ambient"] = req.on
+    return {"ambient": req.on, "instance": INSTANCE_ID}
 
 
 @app.post("/admin/standby")

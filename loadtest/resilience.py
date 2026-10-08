@@ -227,6 +227,11 @@ async def main(a):
     a.base = a.base.rstrip("/")
     os.makedirs(os.path.join(HERE, "results"), exist_ok=True)
     async with httpx.AsyncClient(timeout=a.sla + 30) as c:
+        # background shoppers off: measure only the experiment's own traffic
+        try:
+            await c.post(f"{a.base}/api/multi/control/ambient", json={"on": False})
+        except Exception:  # noqa: BLE001
+            pass
         A = await part_a(c, a) if not a.skip_load else []
         B = await part_b(c, a) if not a.skip_chaos else []
         await c.post(f"{a.base}/api/multi/control/reset")

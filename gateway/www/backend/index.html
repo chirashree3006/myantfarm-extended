@@ -139,6 +139,14 @@
   @keyframes s{to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion:reduce){.spin{animation:none}}
 
+  /* live activity */
+  .act{max-height:260px;overflow:auto;font:12px/1.55 var(--mono);background:#0F1218}
+  .act div{display:grid;grid-template-columns:70px 46px 52px minmax(0,1fr);gap:10px;padding:3px 14px;border-bottom:1px solid #1A1F2A}
+  .act .t{color:var(--faint)} .act .i{color:var(--blue)} .act .INFO{color:var(--green)} .act .WARN{color:var(--amber)} .act .ERROR{color:var(--red)}
+  .act .m{word-break:break-word}
+  @media(max-width:600px){.act div{grid-template-columns:62px 40px minmax(0,1fr)}.act .lv{display:none}}
+  .tgl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--dim);margin-top:14px;cursor:pointer}
+  .tgl input{width:16px;height:16px;accent-color:var(--green)}
   /* online */
   .ppl{display:flex;flex-direction:column}
   .ppl div{display:flex;align-items:center;gap:10px;padding:7px 14px;border-bottom:1px solid var(--line);font-size:13px}
@@ -196,6 +204,7 @@
           <button id="mSingle" aria-pressed="true">Single agent</button>
           <button id="mMulti" aria-pressed="false">Multi-agent</button>
         </div>
+        <label class="tgl"><input type="checkbox" id="ambTgl" checked> Normal-day shoppers (sign in, browse, buy, sign out)</label>
         <div class="row" style="margin-top:14px">
           <button class="prim" id="respondBtn" disabled>Acknowledge</button>
           <button id="resetBtn">Reset demo</button>
@@ -211,6 +220,11 @@
   <section class="card full">
     <header><h2>Replicas behind the load balancer</h2><small>nginx least_conn · web4 is a cold standby</small></header>
     <div class="reps" id="reps"></div>
+  </section>
+
+  <section class="card full">
+    <header><h2>Live activity</h2><small id="actHint">server logs from every replica, newest first</small></header>
+    <div class="act" id="act" aria-live="off"><div><span class="t">—</span><span></span><span></span><span class="m dim">Waiting for activity…</span></div></div>
   </section>
 
   <section class="card full">
@@ -277,6 +291,7 @@ async function poll(){
   $('sCap').textContent = `${L.inflight} / ${L.capacity}`;
   $('sRej').textContent = L.rejected;
   renderReps(L); drawChart();
+  if (document.activeElement !== $('ambTgl')) $('ambTgl').checked = L.replicas.some(r => r.ambient);
 
   const surging = L.replicas.some(r => r.fault_mode === 'surge');
   if (!inc && surging && smooth > 20 && hist.length > 3){
@@ -347,6 +362,23 @@ async function pollPeople(){
       : '<div class="dim">Nobody signed in.</div>';
   } catch {}
 }
+
+
+/* ---------------- live activity: who is signing in, out, buying, failing ---------------- */
+async function pollActivity(){
+  try {
+    const r = await call(API + '/control/activity?limit=40');
+    const rows = r.lines || [];
+    $('act').innerHTML = rows.length ? rows.map(x => `<div><span class="t">${esc(x.timestamp ? new Date(x.timestamp).toLocaleTimeString('en-GB') : '')}</span><span class="i">${esc(x.instance)}</span><span class="lv ${esc(x.level)}">${esc(x.level)}</span><span class="m">${esc(x.message)}</span></div>`).join('')
+      : '<div><span class="t">—</span><span></span><span></span><span class="m dim">Quiet. Nobody is using the shop right now.</span></div>';
+    const by = {}; rows.forEach(x => by[x.instance] = (by[x.instance]||0) + 1);
+    $('actHint').textContent = Object.keys(by).length ? 'last 40 lines: ' + Object.entries(by).sort().map(([k,v]) => `${k} ${v}`).join(' · ') : 'server logs from every replica, newest first';
+  } catch {}
+}
+$('ambTgl').onchange = async () => {
+  const on = $('ambTgl').checked;
+  try { await call(API + '/control/ambient', {on}); page('ops', on ? 'Normal-day shoppers switched on.' : 'Normal-day shoppers switched off.'); } catch {}
+};
 
 /* ---------------- controls ---------------- */
 $('mSingle').onclick = () => setMode('single'); $('mMulti').onclick = () => setMode('multi');
@@ -606,6 +638,7 @@ function renderScore(){
 renderScore();
 poll(); setInterval(poll, 1000);
 pollPeople(); setInterval(pollPeople, 5000);
+pollActivity(); setInterval(pollActivity, 2000);
 </script>
 </body>
 </html>

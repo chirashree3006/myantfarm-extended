@@ -239,6 +239,11 @@ async def main(a):
     rows, healthy = [], []
     os.makedirs(os.path.join(HERE, "results"), exist_ok=True)
     async with httpx.AsyncClient(timeout=a.timeout) as c:
+        # background shoppers off: measure only the experiment's own traffic
+        try:
+            await c.post(f"{a.base}/api/multi/control/ambient", json={"on": False})
+        except Exception:  # noqa: BLE001
+            pass
         for s in a.scenarios:
             conds = [cc for cc in a.conditions if not (s == "paper_static" and cc == "C3x")]
             for t in range(1, a.trials + 1):
