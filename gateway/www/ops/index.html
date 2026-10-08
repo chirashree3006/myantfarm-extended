@@ -43,6 +43,11 @@
   input,select{background:var(--panel2);border:1px solid var(--line);color:var(--text);font:12px var(--mono);padding:7px;width:70px;border-radius:6px}
   select{width:auto}
   .replicas{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+  .status{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+  .status div{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-width:0}
+  .status span{display:block;font-size:11px;color:var(--dim)}
+  .status b{font:800 20px var(--head)} .status b.small{font:600 12px var(--mono)}
+  @media(max-width:900px){.status{grid-template-columns:repeat(2,1fr)}}
   .rep{background:var(--panel2);border:1px solid var(--line);padding:10px;border-radius:6px}
   .rep.down{border-color:var(--bad);background:repeating-linear-gradient(45deg,rgba(255,93,108,.06) 0 8px,transparent 8px 16px)}
   .rep .nm{font:800 16px var(--head)}
@@ -82,7 +87,7 @@
   <h1><span>Side B</span> ops console <small>multi-agent incident response</small></h1>
   <div class="row">
     <a class="pill" href="/" target="_blank" rel="noopener">Open the shop</a>
-    <a class="pill" href="/backend/" target="_blank" rel="noopener">Backend on-call (surge demo)</a>
+    <a class="pill" href="/backend/" target="_blank" rel="noopener">Backend console (responder view)</a>
     <span class="pill" id="gw">gateway …</span>
     <span class="pill" id="scen">scenario: —</span>
     <span class="pill" id="llmh">model …</span>
@@ -91,7 +96,7 @@
 
 <main>
   <section class="panel c12">
-    <h2>Run an incident <span class="hint">inject a fault on every replica, push shopper traffic, then diagnose</span></h2>
+    <h2>Control room <span class="hint">everything that breaks or loads the shop starts here; the backend console only watches and fixes</span></h2>
     <div class="row">
       <div class="grp"><div class="lbl">1. Fault</div>
         <div class="row">
@@ -106,14 +111,37 @@
           <label class="muted small">parallel <input id="tcc" type="number" value="10"></label>
           <button onclick="traffic()">Send traffic</button>
         </div></div>
-      <div class="grp"><div class="lbl">3. Diagnose</div>
+      <div class="grp"><div class="lbl">3. Flash sale (traffic surge)</div>
+        <div class="row">
+          <label class="muted small">shoppers <input id="fsc" type="number" value="150" min="10" max="200"></label>
+          <label class="muted small">seconds <input id="fss" type="number" value="150" min="30" max="600"></label>
+          <button class="danger" onclick="surgeStart()">Start flash sale</button>
+          <button onclick="surgeStop()">Stop</button>
+        </div></div>
+      <div class="grp"><div class="lbl">4. Normal day</div>
+        <div class="row">
+          <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ambTgl" checked onchange="ambient(this.checked)" style="width:auto"> background shoppers</label>
+          <button onclick="resetAll()">Reset everything</button>
+        </div></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="grp"><div class="lbl">Score the agents (paper experiment, read-only: the live fix happens on the backend console)</div>
         <div class="row">
           <button class="primary" onclick="runBoth()">C2 vs C3x side by side</button>
           <button class="blue" onclick="runPaper()" title="Diagnosis → Planner → Risk, as in the paper">Paper C3 pipeline</button>
         </div></div>
-      <div class="grp"><div class="lbl">4. Fix</div>
-        <div class="row"><button onclick="remediate(true)">Preview fix</button><button class="primary" onclick="remediate(false)">Apply fix</button></div>
-      </div>
+    </div>
+  </section>
+
+  <section class="panel c12">
+    <h2>Live status <span class="hint">what shoppers are getting right now, and what the backend team has done about it</span></h2>
+    <div class="status" id="live">
+      <div><span>site</span><b id="lvSite">-</b></div>
+      <div><span>error rate</span><b id="lvErr">-</b></div>
+      <div><span>requests/s</span><b id="lvRps">-</b></div>
+      <div><span>workers busy</span><b id="lvCap">-</b></div>
+      <div><span>active fault</span><b id="lvFault">-</b></div>
+      <div><span>last fix (backend console)</span><b id="lvFix" class="small">none yet</b></div>
     </div>
   </section>
 
@@ -156,7 +184,7 @@
   </section>
 
   <section class="panel c5">
-    <h2>Fault tolerance <span class="hint">crash a component for 60 s (it answers 503)</span></h2>
+    <h2>Fault tolerance <span class="hint">crash a component (it answers 503) for</span> <input id="cdur" type="number" value="60" min="10" max="600" style="width:64px"> <span class="hint">s</span></h2>
     <div class="chaos" id="chaos"></div>
     <p class="small muted" style="margin-top:10px">Try: crash <b>coord1</b> or <b>agent-database</b> and run C3x, then crash <b>single-agent</b> and run C2. Crash <b>web2</b> and send traffic: shoppers are routed around it.</p>
   </section>
@@ -345,8 +373,9 @@ async function loadTest(){
 }
 
 async function chaosToggle(svc, isDown){
-  try{ await call(`/chaos/${svc}/${isDown?'up':'down'}`, {seconds:60}); log(`${svc} ${isDown?'restored':'crashed for 60 s'}`, isDown?'ok':'bad');
-       shareEvent(isDown ? 'fix' : 'crash', `${svc} ${isDown ? 'restored' : 'crashed for 60 s (answers 503)'}`); }
+  const sec = Math.max(10, Math.min(600, +$('cdur').value || 60));
+  try{ await call(`/chaos/${svc}/${isDown?'up':'down'}`, {seconds: sec}); log(`${svc} ${isDown?'restored':`crashed for ${sec} s`}`, isDown?'ok':'bad');
+       shareEvent(isDown ? 'fix' : 'crash', `${svc} ${isDown ? 'restored' : `crashed for ${sec} s (answers 503)`}`); }
   catch(e){ log(`chaos ${svc}: ${e.message}`,'bad'); }
   chaosStatus();
 }
@@ -354,6 +383,48 @@ async function chaosStatus(){
   const st = await Promise.all(SVCS.map(s => call(`/chaos/${s}/status`).catch(()=>({down:null}))));
   $('chaos').innerHTML = SVCS.map((s,i) => `<button class="${st[i].down?'isdown':''}" onclick="chaosToggle('${s}', ${!!st[i].down})">
     <span>${s}</span><span class="small">${st[i].down===null?'?':st[i].down?'down '+st[i].seconds_left+'s':'up'}</span></button>`).join('');
+}
+
+
+/* ---------------- control room actions ---------------- */
+async function surgeStart(){
+  try{ await call(API+'/control/surge', {seconds:+$('fss').value, concurrency:+$('fsc').value});
+       log(`flash sale started: ${$('fsc').value} shoppers for ${$('fss').value} s`, 'warn'); status(); }
+  catch(e){ log('flash sale failed: '+e.message, 'bad'); }
+}
+async function surgeStop(){
+  try{ await call(API+'/control/surge/stop', {}); log('flash sale stopped', 'ok'); status(); }
+  catch(e){ log('stop failed: '+e.message, 'bad'); }
+}
+async function resetAll(){
+  try{ await call(API+'/control/reset', {}); await call(API+'/control/restock', {}); scenario = 'healthy';
+       log('reset: faults off, 12 workers per replica, web4 on standby, waiting room off, stock refilled', 'ok'); status(); }
+  catch(e){ log('reset failed: '+e.message, 'bad'); }
+}
+async function ambient(on){
+  try{ await call(API+'/control/ambient', {on}); log('background shoppers '+(on?'on':'off')); }
+  catch(e){ log('could not switch background shoppers: '+e.message, 'bad'); }
+}
+
+/* live status: error rate from cumulative counters, like the backend console */
+let lhist = [];
+async function livePoll(){
+  try{
+    const L = await call(API+'/control/live'), now = Date.now();
+    if (lhist.length && (L.hits < lhist.at(-1).hits || L.failures < lhist.at(-1).fails)) lhist = [];
+    lhist.push({t: now, hits: L.hits, fails: L.failures}); lhist = lhist.filter(p => now - p.t < 15000);
+    const old = lhist.find(p => now - p.t <= 6000) || lhist[0], cur = lhist.at(-1);
+    const dh = cur.hits - old.hits, err = dh > 0 ? Math.round(100 * (cur.fails - old.fails) / dh) : 0;
+    const fault = L.fault_mode || 'none';
+    const site = err >= 50 ? ['DOWN','bad'] : err >= 5 ? ['DEGRADED','warn'] : ['UP','ok'];
+    $('lvSite').textContent = site[0]; $('lvSite').className = site[1];
+    $('lvErr').textContent = err + '%'; $('lvErr').className = err >= 20 ? 'bad' : err >= 5 ? 'warn' : 'ok';
+    $('lvRps').textContent = L.rps.toFixed(0);
+    $('lvCap').textContent = `${L.inflight} / ${L.capacity}`;
+    $('lvFault').textContent = fault === 'none' ? (L.down?.length ? 'down: ' + L.down.join(', ') : 'none') : fault;
+    $('lvFault').className = fault === 'none' && !L.down?.length ? 'ok' : 'bad';
+    if (document.activeElement !== $('ambTgl')) $('ambTgl').checked = L.replicas.some(r => r.ambient);
+  }catch(e){ $('lvSite').textContent = 'unreachable'; $('lvSite').className = 'bad'; }
 }
 
 /* shared control-room log: actions taken on the backend console show up here */
@@ -367,6 +438,7 @@ async function pollEvents(){
       lastEvent = Math.max(lastEvent, e.id);
       if (e.source === 'ops console') continue;
       log(`[${e.source}] ${e.text}`, e.kind === 'fault' || e.kind === 'crash' ? 'bad' : e.kind === 'fix' ? 'ok' : e.kind === 'traffic' ? 'warn' : '');
+      if (e.kind === 'fix' || e.kind === 'agents') $('lvFix').textContent = `${new Date(e.ts*1000).toLocaleTimeString()} · ${e.text}`;
       if (e.kind !== 'agents') status();
     }
   }catch(e){}
@@ -409,7 +481,7 @@ async function llmMetrics(){
 }
 
 status(); llmMetrics(); chaosStatus();
-setInterval(status, 2000); pollEvents(); setInterval(pollEvents, 2000); setInterval(llmMetrics, 15000); setInterval(chaosStatus, 5000);
+setInterval(status, 2000); pollEvents(); setInterval(pollEvents, 2000); livePoll(); setInterval(livePoll, 1500); setInterval(llmMetrics, 15000); setInterval(chaosStatus, 5000);
 </script>
 </body>
 </html>

@@ -65,23 +65,26 @@ and **Shoppers signed in**. Switch them off with the *Normal-day shoppers* check
 `POST /api/multi/control/ambient {"on": false}`. `benchmark.py` and `resilience.py` switch them off
 automatically so the experiments measure only their own traffic.
 
-### Traffic-surge demo (backend on-call console)
+### Traffic-surge demo: ops console causes it, backend console fixes it
 
-Open **http://localhost/backend/** next to the shop.
+The **ops console** (`/ops/`) is the control room: faults, traffic bursts, the flash sale, background
+shoppers, crashing a component (for N seconds) and Reset everything. Its **Live status** shows whether the
+site is up, the error rate, the active fault and the last fix the backend team applied.
 
-1. **Reset demo → Start flash sale.** 150 simulated shoppers hit the shop through the load balancer.
-   Each replica handles 12 requests at a time, so the shop crashes: sign-in shows **"Side B is down"**.
-   An alert fires when more than 20% of requests fail.
-2. **Single agent → Acknowledge.** One TinyLlama call (C2) gives a vague answer. You can ask it
-   follow-up questions in the chat, but the fix is manual: use the bastion terminal
-   (`docker stats`, `docker compose logs --tail 15 web1`, `docker compose up -d web4`), edit
-   `deploy/web.env` (`WORKER_CAPACITY=40`, `WAITING_ROOM=on`), save, roll it out with
-   `docker compose up -d web1 web2 web3`, and post a status-page update.
-3. **Reset demo → Start flash sale → Multi-agent → Acknowledge.** Four monitor agents run in parallel.
-   The coordinator diagnoses `traffic_surge`, and **Approve and run 3 actions** (1 click) adds web4,
-   raises capacity 12→40 and turns on the waiting room. Each team gets its own ticket.
-4. **Run comparison** shows time to root cause, time to recovery, manual actions, failed requests and DQ,
-   measured on that run. **Shoppers signed in** lists everyone currently signed in to the shop.
+The **backend console** (`/backend/`) is the responder's screen and has no traffic or fault buttons. It shows
+the alert, live traffic, replicas and server logs, and lets you respond:
+
+1. Ops console: **Reset everything → Start flash sale** (150 shoppers). Sign-in in the shop shows **"Side B is down"**.
+2. Backend console: the SEV-1 alert fires. Pick **Single agent → Acknowledge**: one vague answer, a chat for
+   follow-ups, and a terminal + `deploy/web.env` editor where you fix it by hand.
+3. Ops console: **Reset everything → Start flash sale** again. Backend console: **Multi-agent → Acknowledge →
+   Approve and run**: one click scales out, raises capacity and turns on the waiting room.
+4. The fix appears in the ops console's Live status and log; the backend console's **Run comparison** shows
+   time to root cause, time to recovery, manual actions, failed requests and DQ for both runs.
+
+The other faults (auth regression, connection leak, slow database) work the same way: start them from the ops
+console, add traffic, and fix them on the backend console (multi-agent approval, or by hand with
+`deploy history`, `deploy rollback <service> <version>`, `sqlite3 shop.db "CREATE INDEX ..."`).
 
 Remediation API: `POST /api/multi/control/surge {"seconds":120,"concurrency":150}`,
 `POST /api/multi/incident/execute {"action":"scale_out"|"raise_capacity"|"waiting_room", "value":40, "on":true}`,

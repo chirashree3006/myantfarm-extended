@@ -193,23 +193,18 @@
 
   <div class="side">
     <section class="card">
-      <header><h2>Load test</h2><small>flash-sale simulator</small></header>
+      <header><h2>Respond</h2><small>you are on call</small></header>
       <div class="body">
-        <div class="row">
-          <label class="f">shoppers<input id="conc" type="number" value="150" min="10" max="200"></label>
-          <label class="f">duration (s)<input id="secs" type="number" value="150" min="30" max="600"></label>
-          <button class="warnb" id="surgeBtn">Start flash sale</button>
-        </div>
-        <div style="margin-top:14px" class="f dim" id="respLbl">Responder</div>
+        <div class="f dim" id="respLbl">Who helps you fix it</div>
         <div class="seg" role="group" aria-labelledby="respLbl" style="margin-top:4px">
           <button id="mSingle" aria-pressed="true">Single agent</button>
           <button id="mMulti" aria-pressed="false">Multi-agent</button>
         </div>
-        <label class="tgl"><input type="checkbox" id="ambTgl" checked> Normal-day shoppers (sign in, browse, buy, sign out)</label>
         <div class="row" style="margin-top:14px">
           <button class="prim" id="respondBtn" disabled>Acknowledge</button>
-          <button id="resetBtn">Reset demo</button>
+          <span class="dim" id="ackHint" style="font-size:13px">waiting for an alert</span>
         </div>
+        <p class="dim" style="font-size:12px;margin:14px 0 0">Traffic, faults and crashes are started from the <a href="/ops/" target="_blank" rel="noopener">ops console</a>. This page only shows what is going wrong and lets you fix it.</p>
       </div>
     </section>
     <section class="card">
@@ -290,7 +285,7 @@ async function poll(){
   catch(e){ $('conn').textContent = 'api unreachable'; $('conn').className = 'conn bad'; return; }
   live = L;
   const now = Date.now();
-  if (prev && (L.hits < prev.hits || L.failures < prev.failures)) hist = [];   // counters were reset
+  if (prev && (L.hits < prev.hits || L.failures < prev.failures)){ hist = []; resetLocal('reset from the ops console'); }
   prev = L;
   hist.push({t: now, rps: L.rps, hits: L.hits, fails: L.failures, fail: 0});
   hist = hist.filter(p => now - p.t < H*1000);
@@ -306,7 +301,6 @@ async function poll(){
   $('sCap').textContent = `${L.inflight} / ${L.capacity}`;
   $('sRej').textContent = L.failures;
   renderReps(L); drawChart();
-  if (document.activeElement !== $('ambTgl')) $('ambTgl').checked = L.replicas.some(r => r.ambient);
 
   const th = THRESH[fault] ?? 10;
   if (!inc && fault !== 'none' && smooth > th && hist.length > 3){
@@ -317,12 +311,16 @@ async function poll(){
     $('incText').textContent = `web-tier errors at ${smooth.toFixed(0)}% (threshold ${th}%), ${L.rps.toFixed(0)} req/s.` + (fault === 'surge' ? ' Normal is under 5 req/s.' : ' Started without a traffic spike.');
     page('alertmanager', `<b class="red">[FIRING] HighErrorRate</b> web-tier errors ${smooth.toFixed(0)}% &gt; ${th}% · ${L.rps.toFixed(0)} req/s`, 'fire');
     try { if (Notification?.permission === 'granted') new Notification(`${inc.id}: storefront down`, {body: `${smooth.toFixed(0)}% of requests failing`}); } catch {}
-    $('respondBtn').disabled = false;
+    $('respondBtn').disabled = false; $('ackHint').textContent = 'alert open: pick a responder and acknowledge';
     $('wsHint').textContent = `${inc.id} · not acknowledged`;
   }
   if (inc && !inc.recoveredAt){
     $('incTimer').textContent = fmtClock(now - inc.alertAt);
     const healthy = fault === 'none' ? rateOver(3) < 5 : (smooth < 5 && L.rps > 10);
+    if (!inc.respondAt && fault === 'none' && rateOver(3) < 5){        // stopped from the ops console before anyone responded
+      if (++okStreak >= 5){ page('alertmanager', `<b class="green">[RESOLVED] HighErrorRate</b> cleared from the ops console before anyone responded`, 'good'); resetLocal('cleared'); }
+      return;
+    }
     if (inc.respondAt && healthy) okStreak++; else okStreak = 0;
     if (okStreak >= 5){
       inc.recoveredAt = now; inc.failedShoppers = Math.max(0, L.failures - inc.failAtAlert);
@@ -334,6 +332,14 @@ async function poll(){
       if (inc.mode) { runs[inc.mode] = {...inc}; renderScore(); }
     }
   }
+}
+function resetLocal(why){
+  if (inc && !inc.recoveredAt && inc.mode) runs[inc.mode] = runs[inc.mode]?.recoveredAt ? runs[inc.mode] : undefined;
+  inc = null; okStreak = 0; marks = []; $('inc').className = 'full';
+  $('respondBtn').disabled = true; $('ackHint').textContent = 'waiting for an alert';
+  $('wsTitle').textContent = 'Incident response'; $('wsHint').textContent = 'nothing open';
+  $('workspace').innerHTML = '<span class="dim">No open incident.</span>';
+  renderScore();
 }
 function fmtClock(ms){ const s = Math.floor(ms/1000); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 
@@ -393,10 +399,7 @@ async function pollActivity(){
     $('actHint').textContent = Object.keys(by).length ? 'last 40 lines: ' + Object.entries(by).sort().map(([k,v]) => `${k} ${v}`).join(' · ') : 'server logs from every replica, newest first';
   } catch {}
 }
-$('ambTgl').onchange = async () => {
-  const on = $('ambTgl').checked;
-  try { await call(API + '/control/ambient', {on}); page('ops', on ? 'Normal-day shoppers switched on.' : 'Normal-day shoppers switched off.'); } catch {}
-};
+
 
 
 /* ---------------- shared control-room log: actions taken on the ops console show up here ---------------- */
@@ -418,29 +421,10 @@ async function pollEvents(){
 $('mSingle').onclick = () => setMode('single'); $('mMulti').onclick = () => setMode('multi');
 function setMode(m){ mode = m; $('mSingle').setAttribute('aria-pressed', m==='single'); $('mMulti').setAttribute('aria-pressed', m==='multi'); }
 
-$('surgeBtn').onclick = async () => {
-  try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch {}
-  $('surgeBtn').disabled = true;
-  try {
-    await call(API + '/control/surge', {seconds: +$('secs').value, concurrency: +$('conc').value});
-    mark('sale opens', '#F0A04B');
-    page('load-test', `Flash sale started: ${esc($('conc').value)} shoppers for ${esc($('secs').value)} s`);
-  } catch(e){ page('load-test', 'Could not start: ' + esc(e.message), 'fire'); $('surgeBtn').disabled = false; }
-};
-
-$('resetBtn').onclick = async () => {
-  try { await call(API + '/control/surge/stop', {}); await call(API + '/control/reset', {}); } catch(e){}
-  inc = null; okStreak = 0; marks = []; $('inc').className = 'full';
-  $('respondBtn').disabled = true; $('surgeBtn').disabled = false;
-  $('wsTitle').textContent = 'Incident response'; $('wsHint').textContent = 'nothing open';
-  $('workspace').innerHTML = '<span class="dim">No open incident.</span>';
-  page('ops', 'Demo reset: load stopped, 12 workers per replica, web4 back on standby, waiting room off.');
-};
-
 $('respondBtn').onclick = () => {
   if (!inc || inc.respondAt) return;
   inc.mode = mode; inc.respondAt = Date.now(); runs[mode] = inc;
-  $('respondBtn').disabled = true;
+  $('respondBtn').disabled = true; $('ackHint').textContent = 'acknowledged';
   mark(mode === 'multi' ? 'ack (multi)' : 'ack (single)', '#5B8DEF');
   page('pager', `Acknowledged by backend on-call · responder: ${mode === 'multi' ? 'multi-agent' : 'single agent'}`);
   mode === 'multi' ? respondMulti() : respondSingle();
