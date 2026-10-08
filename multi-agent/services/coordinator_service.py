@@ -22,7 +22,7 @@ import time
 import zlib
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -51,6 +51,19 @@ async def _fan(method: str, path: str, json=None) -> dict:
         res = await asyncio.gather(*[one(t) for t in config.DEMO_TARGETS])
     return {(r.get("instance") or r.get("target", "").split("//")[-1].split(":")[0] or f"t{i}"): r
             for i, r in enumerate(res)}
+
+
+async def _event(source: str, kind: str, text: str):
+    """Write to the shared control-room log (stored on the shop, read by both consoles)."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            await c.post(f"{config.DEMO_LB_URL}/admin/events", json={"source": source, "kind": kind, "text": text})
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _src(request: Request | None) -> str:
+    return (request.headers.get("x-console") if request else None) or "api"
 
 
 async def _call_agent(client: httpx.AsyncClient, role: str, limit: int, use_llm: bool) -> dict:
@@ -111,13 +124,18 @@ async def _paper(req: AnalyzeRequest) -> dict:
 
 
 @app.post("/incident/analyze")
-async def analyze(req: AnalyzeRequest):
+async def analyze(req: AnalyzeRequest, request: Request):
     if req.mode == "paper":
-        return await _paper(req)
+        out = await _paper(req)
+        await _event(_src(request), "agents", f"C3 paper pipeline answered (DQ {out.get('dq', {}).get('dq', '-')})")
+        return out
     if req.source == "paper_static":
         return JSONResponse({"error": "extended mode needs live telemetry; use mode=paper for paper_static"},
                             status_code=400)
-    return await _extended(req)
+    out = await _extended(req)
+    d = out["brief"]["diagnosis"]
+    await _event(_src(request), "agents", f"Multi-agent (C3x) diagnosis: {d['title']} ({d['confidence_pct']}% confidence)")
+    return out
 
 
 class RemediateRequest(BaseModel):
@@ -125,7 +143,7 @@ class RemediateRequest(BaseModel):
 
 
 @app.post("/incident/remediate")
-async def remediate(req: RemediateRequest):
+async def remediate(req: RemediateRequest, request: Request):
     """Closed loop: re-diagnose (rules only, fast), then apply the priority-1
     mitigation on the demo site (restart = reset replica, rollback = fault off)."""
     result = await _extended(AnalyzeRequest(use_llm=False))
@@ -139,6 +157,7 @@ async def remediate(req: RemediateRequest):
     if req.dry_run or not plan:
         return {"diagnosis": rid, "dry_run": True, "would_execute": plan}
     executed = await _fan("POST", "/admin/reset")
+    await _event(_src(request), "fix", f"Fix applied for {rid}: {plan[0]}")
     return {"diagnosis": rid, "dry_run": False, "executed": plan, "results": executed}
 
 
@@ -153,8 +172,11 @@ class TrafficRequest(BaseModel):
 
 
 @app.post("/control/reset")
-async def control_reset():
-    return await _fan("POST", "/admin/reset")
+async def control_reset(request: Request):
+    surge_stats["running"] = False
+    out = await _fan("POST", "/admin/reset")
+    await _event(_src(request), "info", "Reset: faults off, 12 workers per replica, web4 on standby, waiting room off")
+    return out
 
 
 @app.post("/control/restock")
@@ -165,14 +187,19 @@ async def control_restock():
 
 
 @app.post("/control/fault")
-async def control_fault(req: FaultRequest):
+async def control_fault(req: FaultRequest, request: Request):
+    await _event(_src(request), "fault" if req.mode != "none" else "fix",
+                 f"Fault set on every replica: {req.mode}" if req.mode != "none" else "Fault cleared on every replica")
     return await _fan("POST", "/admin/fault", json={"mode": req.mode})
 
 
 @app.post("/control/traffic")
-async def control_traffic(req: TrafficRequest):
+async def control_traffic(req: TrafficRequest, request: Request):
     """Real user-style traffic (sign-ins + checkouts) through the website load balancer."""
-    return await generate_traffic(config.DEMO_LB_URL, min(req.count, 2000), min(req.concurrency, 100), mix=req.mix)
+    out = await generate_traffic(config.DEMO_LB_URL, min(req.count, 2000), min(req.concurrency, 100), mix=req.mix)
+    await _event(_src(request), "traffic", f"Traffic burst: {out.get('requests')} requests, {out.get('success_rate_pct')}% ok, "
+                 + ", ".join(f"{k} {v}" for k, v in sorted(out.get("by_instance", {}).items())))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -234,15 +261,17 @@ class SurgeRequest(BaseModel):
 
 
 @app.post("/control/surge")
-async def control_surge(req: SurgeRequest):
+async def control_surge(req: SurgeRequest, request: Request):
     await _fan("POST", "/admin/fault", json={"mode": "surge"})
+    await _event(_src(request), "traffic", f"Flash sale started: {req.concurrency} shoppers for {req.seconds} s")
     asyncio.create_task(_flood(max(10, min(req.seconds, 600)), max(5, min(req.concurrency, 200))))
     return {"surge": "started", "seconds": req.seconds, "concurrency": req.concurrency, "by": config.INSTANCE_ID}
 
 
 @app.post("/control/surge/stop")
-async def control_surge_stop():
+async def control_surge_stop(request: Request):
     surge_stats["running"] = False
+    await _event(_src(request), "info", "Flash sale stopped")
     return await _fan("POST", "/admin/fault", json={"mode": "none"})
 
 
@@ -250,10 +279,15 @@ class ExecuteRequest(BaseModel):
     action: str
     value: int | None = None      # raise_capacity: workers per replica (default 40)
     on: bool = True               # waiting_room / scale_out: on or off
+    service: str | None = None    # rollback: which service (empty = the one the diagnosis named)
+    version: str | None = None    # rollback: which version to go back to
+
+
+FIXED_BY = {"rollback": ("auth_regression", "leak"), "add_index": ("slow_db",)}
 
 
 @app.post("/incident/execute")
-async def incident_execute(req: ExecuteRequest):
+async def incident_execute(req: ExecuteRequest, request: Request):
     """Run one remediation action for real (used by the backend console and by C3x auto-remediation)."""
     t0 = time.time()
     if req.action == "scale_out":
@@ -267,8 +301,28 @@ async def incident_execute(req: ExecuteRequest):
         result = await _fan("POST", "/admin/capacity", json={"inflight": max(1, min(req.value or 40, 500))})
     elif req.action == "waiting_room":
         result = await _fan("POST", "/admin/waiting-room", json={"on": req.on})
+    elif req.action in FIXED_BY:
+        # rollback a deploy / add the missing index: only the RIGHT fix clears the fault
+        st = {k: v for k, v in (await _fan("GET", "/admin/status")).items() if "error" not in v}
+        cur = next(iter(st.values()), {})
+        mode = cur.get("fault_mode", "none")
+        right = mode in FIXED_BY[req.action]
+        if right and req.action == "rollback" and req.service:
+            right = req.service == cur.get("service") and (req.version or "") == cur.get("previous_version")
+        if right:
+            result = await _fan("POST", "/admin/fault", json={"mode": "none"})
+        what = (f"rolled back {req.service or cur.get('service')} to {req.version or cur.get('previous_version')}"
+                if req.action == "rollback" else "added index on orders(user_id)")
+        await _event(_src(request), "fix" if right else "info",
+                     f"{what}: {'errors stopped' if right else 'did not fix the problem (' + mode + ' still active)'}")
+        return {"action": req.action, "done_at": t0, "fixed": right, "fault_was": mode, "what": what}
     else:
-        return JSONResponse({"error": "action must be scale_out, raise_capacity or waiting_room"}, status_code=400)
+        return JSONResponse({"error": "action must be scale_out, raise_capacity, waiting_room, rollback or add_index"},
+                            status_code=400)
+    msg = {"scale_out": "web4 added to the load-balancer pool",
+           "raise_capacity": f"worker capacity set to {max(1, min(req.value or 40, 500))} on every replica",
+           "waiting_room": "waiting room " + ("on" if req.on else "off")}[req.action]
+    await _event(_src(request), "fix", msg)
     return {"action": req.action, "done_at": t0, "result": result}
 
 
@@ -369,7 +423,8 @@ class AmbientRequest(BaseModel):
 
 
 @app.post("/control/ambient")
-async def control_ambient(req: AmbientRequest):
+async def control_ambient(req: AmbientRequest, request: Request):
+    await _event(_src(request), "info", "Normal-day shoppers " + ("on" if req.on else "off"))
     return await _fan("POST", "/admin/ambient", json={"on": req.on})
 
 
@@ -390,6 +445,29 @@ async def control_activity(limit: int = 30):
             "ambient": dict(ambient_stats)}
 
 
+class EventIn(BaseModel):
+    source: str = "api"
+    kind: str = "info"
+    text: str
+
+
+@app.post("/control/event")
+async def control_event(ev: EventIn):
+    """For actions that don't pass through the coordinator (e.g. /chaos crashes, single-agent answers)."""
+    await _event(ev.source, ev.kind, ev.text)
+    return {"ok": True}
+
+
+@app.get("/control/events")
+async def control_events(since_id: int = 0, limit: int = 60):
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get(f"{config.DEMO_LB_URL}/admin/events", params={"since_id": since_id, "limit": limit})
+        return {"events": r.json() if r.status_code == 200 else []}
+    except Exception:  # noqa: BLE001
+        return {"events": []}
+
+
 @app.get("/control/live")
 async def control_live():
     st = await _fan("GET", "/admin/status")
@@ -400,7 +478,8 @@ async def control_live():
             continue
         reps.append({k: v.get(k) for k in ("instance", "rps", "inflight", "capacity", "standby", "waiting_room",
                                             "rejected", "queued", "hits", "fault_mode", "total_requests", "login_attempts",
-                                            "chaos_down", "ambient")})
+                                            "chaos_down", "ambient", "total_failures", "login_failures", "service",
+                                            "deploy_version", "previous_version", "pool_utilization_pct")})
     up = [r for r in reps if not r.get("down")]
     return {"t": time.time(), "surge": dict(surge_stats), "replicas": reps,
             "rps": round(sum(r["rps"] or 0 for r in up), 1),
@@ -409,6 +488,9 @@ async def control_live():
             "rejected": sum(r["rejected"] or 0 for r in up),
             "queued": sum(r["queued"] or 0 for r in up),
             "hits": sum(r["hits"] or 0 for r in up),
+            "failures": sum(r["total_failures"] or 0 for r in up),
+            "fault_mode": next((r["fault_mode"] for r in up if r["fault_mode"] not in (None, "none")), "none"),
+            "down": [r["instance"] for r in reps if r.get("down")],
             "served": sum((r["total_requests"] or 0) + (r["login_attempts"] or 0) for r in up)}
 
 

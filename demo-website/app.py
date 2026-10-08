@@ -254,6 +254,8 @@ def init_db():
                     id TEXT PRIMARY KEY, title TEXT, artist TEXT, year INT, price INT,
                     stock INT, initial_stock INT, pressing TEXT, palette TEXT, pattern TEXT,
                     tracks TEXT, notes TEXT);
+                CREATE TABLE IF NOT EXISTS events(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, source TEXT, kind TEXT, text TEXT);
                 CREATE TABLE IF NOT EXISTS presence(
                     user_id INTEGER PRIMARY KEY, name TEXT, picture TEXT, provider TEXT, last_seen REAL);
                 CREATE TABLE IF NOT EXISTS orders(
@@ -629,6 +631,8 @@ def set_fault(req: FaultReq):
     if req.mode not in FAULT_MODES:
         return err(f"mode must be one of {FAULT_MODES}", 400)
     with lock:
+        if req.mode == "none" and state["fault_mode"] == "leak":
+            state["active_connections"] = 0   # a rollback redeploys the service, which frees the leaked connections
         state["fault_mode"] = req.mode
         state["deploy_time"] = now()  # the faulty deploy "just happened"
     return {"fault_mode": req.mode, "instance": INSTANCE_ID}
@@ -667,6 +671,33 @@ def set_waiting_room(req: FlagReq):
     """Queue extra shoppers (HTTP 429 + auto-retry) instead of failing them."""
     state["waiting_room"] = req.on
     return {"instance": INSTANCE_ID, "waiting_room": state["waiting_room"]}
+
+
+class EventReq(BaseModel):
+    source: str = "api"      # ops console | backend console | agents | load test
+    kind: str = "info"       # info | fault | fix | traffic | crash | alert
+    text: str
+
+
+@app.post("/admin/events")
+def add_event(req: EventReq):
+    """Shared control-room log: both consoles write here and both read it, so an action on one
+    page shows up on the other. Stored in the shared SQLite, so every replica serves the same list."""
+    with db() as con:
+        cur = con.execute("INSERT INTO events(ts,source,kind,text) VALUES(?,?,?,?)",
+                          (time.time(), req.source[:40], req.kind[:20], req.text[:400]))
+        con.execute("DELETE FROM events WHERE id < ?", (cur.lastrowid - 500,))
+    return {"id": cur.lastrowid}
+
+
+@app.get("/admin/events")
+def list_events(since_id: int = 0, limit: int = 60):
+    with db() as con:
+        if since_id:
+            rows = con.execute("SELECT * FROM events WHERE id > ? ORDER BY id LIMIT ?", (since_id, limit)).fetchall()
+        else:
+            rows = con.execute("SELECT * FROM (SELECT * FROM events ORDER BY id DESC LIMIT ?) ORDER BY id", (limit,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 @app.post("/admin/ambient")

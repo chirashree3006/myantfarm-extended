@@ -168,6 +168,7 @@
   <nav aria-label="Sections"><a href="/ops/">Overview</a><a class="on" href="/backend/">Incidents</a><a href="/" target="_blank" rel="noopener">Storefront ↗</a></nav>
   <span class="spacer"></span>
   <span class="who"><span>primary on-call</span><b>backend</b></span>
+  <span class="conn" id="faultChip">no fault injected</span>
   <span class="conn" id="conn">connecting</span>
 </div>
 
@@ -255,10 +256,22 @@ const runs = {};
 const H = 180;
 
 async function call(url, body) {
-  const r = await fetch(url, {method: body !== undefined ? 'POST' : 'GET', headers:{'Content-Type':'application/json'},
+  const r = await fetch(url, {method: body !== undefined ? 'POST' : 'GET',
+    headers:{'Content-Type':'application/json', 'X-Console':'backend console'},
     body: body !== undefined ? JSON.stringify(body) : undefined});
   if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0,160));
   return r.json();
+}
+// what each fault looks like from the outside (alerts describe symptoms, not causes)
+const SYMPTOM = {surge: 'Storefront returning 503 to shoppers', auth_regression: 'Sign-ins failing for shoppers',
+                 leak: 'Checkouts failing with server errors', slow_db: 'Checkouts slow and timing out'};
+const THRESH = {surge: 20};   // others: 10%
+// error rate over the last `win` seconds, from cumulative counters
+function rateOver(win){
+  const now = Date.now(), cur = hist.at(-1); if (!cur) return 0;
+  const old = hist.find(p => now - p.t <= win*1000) || cur;
+  const dh = cur.hits - old.hits, df = cur.fails - old.fails;
+  return dh > 0 ? Math.max(0, Math.min(100, 100 * df / dh)) : 0;
 }
 function page(src, html, kind=''){
   const f = $('feed'); if (!alerts) f.innerHTML = '';
@@ -277,43 +290,46 @@ async function poll(){
   catch(e){ $('conn').textContent = 'api unreachable'; $('conn').className = 'conn bad'; return; }
   live = L;
   const now = Date.now();
-  let failPct = 0;
-  if (prev){
-    const dh = L.hits - prev.hits, dr = L.rejected - prev.rejected;
-    failPct = dh > 0 ? Math.max(0, Math.min(100, 100 * dr / dh)) : 0;
-  }
+  if (prev && (L.hits < prev.hits || L.failures < prev.failures)) hist = [];   // counters were reset
   prev = L;
-  hist.push({t: now, rps: L.rps, fail: failPct}); hist = hist.filter(p => now - p.t < H*1000);
+  hist.push({t: now, rps: L.rps, hits: L.hits, fails: L.failures, fail: 0});
+  hist = hist.filter(p => now - p.t < H*1000);
   marks = marks.filter(m => now - m.t < H*1000);
-  const smooth = hist.slice(-3).reduce((a,p)=>a+p.fail,0) / Math.min(3, hist.length);
+  hist.at(-1).fail = rateOver(3);
+  const fault = L.fault_mode || 'none';
+  const smooth = rateOver(fault === 'surge' || fault === 'none' ? 3 : 10);
+  $('faultChip').textContent = fault === 'none' ? (L.down?.length ? `down: ${L.down.join(', ')}` : 'no fault injected')
+    : `fault active: ${fault}`;
+  $('faultChip').className = 'conn ' + (fault === 'none' && !L.down?.length ? 'ok' : 'bad');
   $('sRps').textContent = L.rps.toFixed(0);
   $('sFail').textContent = smooth.toFixed(0) + '%'; $('sFail').className = smooth > 20 ? 'red' : smooth > 5 ? 'amber' : 'green';
   $('sCap').textContent = `${L.inflight} / ${L.capacity}`;
-  $('sRej').textContent = L.rejected;
+  $('sRej').textContent = L.failures;
   renderReps(L); drawChart();
   if (document.activeElement !== $('ambTgl')) $('ambTgl').checked = L.replicas.some(r => r.ambient);
 
-  const surging = L.replicas.some(r => r.fault_mode === 'surge');
-  if (!inc && surging && smooth > 20 && hist.length > 3){
-    inc = {id: 'INC-' + (2000 + Math.floor(Math.random()*900)), mode: null, alertAt: now, rejAtAlert: L.rejected, actions: 0, teams: 0};
+  const th = THRESH[fault] ?? 10;
+  if (!inc && fault !== 'none' && smooth > th && hist.length > 3){
+    inc = {id: 'INC-' + (2000 + Math.floor(Math.random()*900)), fault, mode: null, alertAt: now, failAtAlert: L.failures, actions: 0, teams: 0};
     mark('alert', '#E5534B');
     $('inc').className = 'full on'; $('incSev').textContent = 'SEV-1';
-    $('incTitle').textContent = `${inc.id} · Storefront returning 503 to shoppers`;
-    $('incText').textContent = `web-tier 5xx at ${smooth.toFixed(0)}% (threshold 20%), ${L.rps.toFixed(0)} req/s against a normal of under 5. Sign-in and checkout affected.`;
-    page('alertmanager', `<b class="red">[FIRING] HighErrorRate</b> web-tier 5xx ${smooth.toFixed(0)}% &gt; 20% · ${L.rps.toFixed(0)} req/s`, 'fire');
+    $('incTitle').textContent = `${inc.id} · ${SYMPTOM[fault] || 'Error rate above threshold'}`;
+    $('incText').textContent = `web-tier errors at ${smooth.toFixed(0)}% (threshold ${th}%), ${L.rps.toFixed(0)} req/s.` + (fault === 'surge' ? ' Normal is under 5 req/s.' : ' Started without a traffic spike.');
+    page('alertmanager', `<b class="red">[FIRING] HighErrorRate</b> web-tier errors ${smooth.toFixed(0)}% &gt; ${th}% · ${L.rps.toFixed(0)} req/s`, 'fire');
     try { if (Notification?.permission === 'granted') new Notification(`${inc.id}: storefront down`, {body: `${smooth.toFixed(0)}% of requests failing`}); } catch {}
     $('respondBtn').disabled = false;
     $('wsHint').textContent = `${inc.id} · not acknowledged`;
   }
   if (inc && !inc.recoveredAt){
     $('incTimer').textContent = fmtClock(now - inc.alertAt);
-    if (inc.respondAt && smooth < 5 && L.rps > 10) okStreak++; else okStreak = 0;
+    const healthy = fault === 'none' ? rateOver(3) < 5 : (smooth < 5 && L.rps > 10);
+    if (inc.respondAt && healthy) okStreak++; else okStreak = 0;
     if (okStreak >= 5){
-      inc.recoveredAt = now; inc.failedShoppers = L.rejected - inc.rejAtAlert;
+      inc.recoveredAt = now; inc.failedShoppers = Math.max(0, L.failures - inc.failAtAlert);
       mark('resolved', '#3FB68B');
       $('inc').className = 'full on res'; $('incSev').textContent = 'RESOLVED';
       $('incTitle').textContent = `${inc.id} · Storefront serving again`;
-      $('incText').textContent = `Error rate under 5% with ${L.rps.toFixed(0)} req/s still coming in. Open for ${secs(now - inc.alertAt)}.`;
+      $('incText').textContent = `Error rate under 5% at ${L.rps.toFixed(0)} req/s. Open for ${secs(now - inc.alertAt)}.`;
       page('alertmanager', `<b class="green">[RESOLVED] HighErrorRate</b> after ${secs(now - inc.alertAt)} · ${inc.failedShoppers} failed requests`, 'good');
       if (inc.mode) { runs[inc.mode] = {...inc}; renderScore(); }
     }
@@ -326,11 +342,13 @@ function renderReps(L){
     if (r.down) return `<div class="rep"><div class="nm">${esc(r.instance)}<span class="tag r">down</span></div><div class="dim mono" style="font-size:12px;margin-top:8px">unreachable</div></div>`;
     const pct = r.capacity ? Math.min(100, 100 * r.inflight / r.capacity) : 0;
     const hot = !r.standby && (pct >= 100 || (r.fault_mode === 'surge' && r.rps > r.capacity * 2));
-    const tag = r.standby ? '<span class="tag d">standby</span>' : hot ? '<span class="tag r">saturated</span>' : '<span class="tag g">healthy</span>';
+    const fm = r.fault_mode && r.fault_mode !== 'none' && r.fault_mode !== 'surge' ? r.fault_mode : '';
+    const tag = r.standby ? '<span class="tag d">standby</span>' : hot ? '<span class="tag r">saturated</span>'
+      : fm ? `<span class="tag r">${esc(fm)}</span>` : '<span class="tag g">healthy</span>';
     return `<div class="rep ${r.standby?'standby':''}"><div class="nm">${esc(r.instance)}${tag}</div>
       <div class="bar"><i style="width:${r.standby?0:pct}%;background:${pct>=100?'var(--red)':pct>=70?'var(--amber)':'var(--green)'}"></i></div>
       <div class="kv"><b>workers</b><span>${r.inflight}/${r.capacity}</span><b>req/s</b><span>${r.rps}</span>
-      <b>503s</b><span class="${r.rejected?'red':''}">${r.rejected}</span><b>queued</b><span>${r.queued}${r.waiting_room?' <span class="blue">waiting room</span>':''}</span></div></div>`;
+      <b>errors</b><span class="${r.total_failures?'red':''}">${r.total_failures ?? r.rejected}</span><b>queued</b><span>${r.queued}${r.waiting_room?' <span class="blue">waiting room</span>':''}</span></div></div>`;
   }).join('');
 }
 
@@ -380,6 +398,22 @@ $('ambTgl').onchange = async () => {
   try { await call(API + '/control/ambient', {on}); page('ops', on ? 'Normal-day shoppers switched on.' : 'Normal-day shoppers switched off.'); } catch {}
 };
 
+
+/* ---------------- shared control-room log: actions taken on the ops console show up here ---------------- */
+let lastEvent = -1;
+async function pollEvents(){
+  try {
+    const r = await call(API + '/control/events?since_id=' + Math.max(0, lastEvent) + '&limit=40');
+    const evs = r.events || [];
+    if (lastEvent < 0){ lastEvent = evs.length ? evs.at(-1).id : 0; return; }   // first load: start from now
+    for (const e of evs){
+      lastEvent = Math.max(lastEvent, e.id);
+      if (e.source === 'backend console') continue;            // our own actions are already in the pager
+      page(e.source, esc(e.text), e.kind === 'fault' || e.kind === 'crash' ? 'fire' : e.kind === 'fix' ? 'good' : e.kind === 'agents' ? 'bot' : '');
+    }
+  } catch {}
+}
+
 /* ---------------- controls ---------------- */
 $('mSingle').onclick = () => setMode('single'); $('mMulti').onclick = () => setMode('multi');
 function setMode(m){ mode = m; $('mSingle').setAttribute('aria-pressed', m==='single'); $('mMulti').setAttribute('aria-pressed', m==='multi'); }
@@ -414,9 +448,11 @@ $('respondBtn').onclick = () => {
 
 async function execute(action, extra = {}){
   const r = await call(API + '/incident/execute', {action, ...extra});
-  const msg = {scale_out: 'web4 added to the load-balancer pool', raise_capacity: `worker capacity set to ${extra.value ?? 40} on every replica`,
+  let msg = {scale_out: 'web4 added to the load-balancer pool', raise_capacity: `worker capacity set to ${extra.value ?? 40} on every replica`,
                waiting_room: extra.on === false ? 'waiting room turned off' : 'waiting room on: overflow queues instead of failing'}[action];
-  page('deploy', msg, 'good'); mark(action.replace('_', ' '), '#3FB68B');
+  if (action === 'rollback' || action === 'add_index') msg = `${r.what}: ${r.fixed ? 'errors stopped' : 'did not fix it'}`;
+  page('deploy', esc(msg), r.fixed === false ? 'fire' : 'good'); mark(action.replace('_', ' '), r.fixed === false ? '#F0A04B' : '#3FB68B');
+  if (r.fixed && inc && !inc.diagnosedAt) inc.diagnosedAt = Date.now();
   return r;
 }
 
@@ -444,10 +480,11 @@ async function respondSingle(){
   $('workspace').innerHTML = `<div class="ans"><div class="h"><span>ops-assistant (TinyLlama, single prompt)</span><span><span class="spin"></span> reading everything…</span></div></div>`;
   page('ops-assistant', 'Analysing the incident…', 'bot');
   let s;
-  try { s = await call(SAPI + '/analyze', {scenario: 'surge'}); }
+  try { s = await call(SAPI + '/analyze', {scenario: inc.fault}); }
   catch(e){ s = {answer: '(no answer: ' + e.message + ')', dq: null}; }
   inc.agentAt = Date.now(); inc.dq = s.dq?.dq ?? 0;
   page('ops-assistant', `Replied after ${secs(inc.agentAt - inc.respondAt)}. No owner, nothing it can run.`, 'bot');
+  call(API + '/control/event', {source: 'backend console', kind: 'agents', text: `Single agent (C2) answered: DQ ${(s.dq?.dq ?? 0).toFixed(2)}, ${s.dq?.actionable ? 'actionable' : 'not actionable'}`}).catch(() => {});
   chatLog.push({role: 'agent', text: s.answer});
   $('workspace').innerHTML = `
     <div class="ans">
@@ -468,12 +505,13 @@ async function respondSingle(){
           <div class="bar2"><span id="stState">draft</span><button id="stPost">Post update</button></div></div>
       </div>
     </div>
-    <details class="rb"><summary>Runbook: web tier overloaded (wiki)</summary><ol>
+    <details class="rb"><summary>Runbook: storefront incidents (wiki)</summary><ol>
       <li>Find the failing replicas: <code>docker stats</code>, then <code>docker compose logs --tail 15 web1</code></li>
       <li>Bring the standby into the pool: <code>docker compose up -d web4</code></li>
       <li>Raise <code>WORKER_CAPACITY</code> in deploy/web.env (40 handles a drop), optionally set <code>WAITING_ROOM=on</code>, save</li>
       <li>Roll it out: <code>docker compose up -d web1 web2 web3 web4</code></li>
-      <li>Post a status page update</li></ol></details>`;
+      <li>Post a status page update</li></ol>
+      <p style="margin:8px 0 0">Other incidents: a bad deploy \u2192 <code>deploy history</code>, then <code>deploy rollback &lt;service&gt; &lt;previous version&gt;</code>. Slow queries \u2192 <code>sqlite3 shop.db "EXPLAIN SELECT * FROM orders WHERE user_id=1"</code>, then <code>sqlite3 shop.db "CREATE INDEX idx_orders_user_id ON orders(user_id)"</code>.</p></details>`;
   renderChat();
   $('askForm').onsubmit = e => { e.preventDefault(); ask(); };
   // terminal
@@ -529,7 +567,10 @@ async function runCmd(raw){
     if (c === 'help'){
       ['docker compose ps                 list containers', 'docker stats                      workers, req/s and 503s per replica',
        'docker compose logs --tail N webX tail a replica\'s logs', 'cat deploy/web.env                show the saved config',
-       'docker compose up -d <services>   start or roll out services (applies deploy/web.env)', 'clear'].forEach(l => tprint(l, 'c'));
+       'docker compose up -d <services>   start or roll out services (applies deploy/web.env)',
+       'deploy history                    which version of each service is running, and the previous one',
+       'deploy rollback <service> <ver>   roll a service back to an earlier version',
+       'sqlite3 shop.db "<SQL>"           run SQL on the shop database (e.g. CREATE INDEX ...)', 'clear'].forEach(l => tprint(l, 'c'));
     } else if (c === 'clear'){ $('tout').innerHTML = ''; }
     else if (/^docker (compose )?ps$/.test(c)){
       act(); tprint(pad('NAME', 16) + pad('IMAGE', 22) + pad('STATUS', 22) + 'PORTS', 'c');
@@ -545,7 +586,7 @@ async function runCmd(raw){
       act();
       const r = await call(`${API}/control/logs?instance=${svc}&limit=${n}`);
       if (!r.records.length) tprint(`${svc}  | (no log lines yet)`, 'c');
-      r.records.forEach(x => tprint(`${svc}  | ${String(x.timestamp||'').slice(11,19)} ${pad(x.level, 5)} ${x.message}`,
+      r.records.forEach(x => tprint(`${svc}  | ${x.timestamp ? new Date(x.timestamp).toLocaleTimeString('en-GB') : ''} ${pad(x.level, 5)} ${x.message}`,
         x.level === 'ERROR' ? 'e' : x.level === 'WARN' ? 'w' : ''));
       if (!inc.sawLogsAt && r.records.some(x => /exceed worker capacity/.test(x.message))) inc.sawLogsAt = Date.now();
     } else if (/^cat (deploy\/)?web\.env$/.test(c)){
@@ -571,6 +612,21 @@ async function runCmd(raw){
       }
       tprint(`[+] Running ${out.length}/${out.length}`);
       out.forEach(([a, b]) => tprint(` ✔ ${pad(a, 26)} ${b}`, 'p'));
+    } else if (c === 'deploy history'){
+      act(); tprint(pad('REPLICA', 9) + pad('SERVICE', 18) + pad('RUNNING', 10) + 'PREVIOUS', 'c');
+      reps.filter(r => !r.down).forEach(r => tprint(pad(r.instance, 9) + pad(r.service || '-', 18) + pad(r.deploy_version || '-', 10) + (r.previous_version || '-')));
+    } else if (/^deploy rollback\b/.test(c)){
+      const [, , svc, ver] = c.split(' ');
+      if (!svc || !ver) return tprint('usage: deploy rollback <service> <version>   e.g. deploy rollback checkout-service v2.2.4', 'e');
+      act(); tprint(`rolling back ${svc} to ${ver} on web1 web2 web3 web4 ...`);
+      const r = await execute('rollback', {service: svc, version: ver});
+      tprint(r.fixed ? `\u2714 ${svc} ${ver} running on all replicas` : `\u2714 ${svc} ${ver} deployed, but errors are still coming in`, r.fixed ? 'p' : 'w');
+    } else if (/^sqlite3\b/i.test(c)){
+      act();
+      if (/create\s+index/i.test(c) && /orders/i.test(c)){
+        const r = await execute('add_index'); tprint(r.fixed ? 'index created; query plan now uses idx_orders_user_id' : 'index created', r.fixed ? 'p' : '');
+      } else if (/explain/i.test(c)) tprint('SCAN orders  (full table scan: no index on orders.user_id)', 'w');
+      else tprint('ok');
     } else if (/^(curl|kubectl|ssh|sudo|systemctl)\b/.test(c)){
       tprint(`${c.split(' ')[0]}: not available on this bastion; use docker compose`, 'e');
     } else tprint(`bash: ${c.split(' ')[0]}: command not found`, 'e');
@@ -584,7 +640,7 @@ async function respondMulti(){
   $('workspace').innerHTML = `<div class="ans"><div class="h"><span>frontend · server · database · user-reports agents</span><span><span class="spin"></span> each reading its own stream…</span></div></div>`;
   page('antfarm', '4 agents started in parallel.', 'bot');
   let m;
-  try { m = await call(API + '/incident/analyze', {scenario: 'surge', mode: 'extended'}); }
+  try { m = await call(API + '/incident/analyze', {scenario: inc.fault, mode: 'extended'}); }
   catch(e){ $('workspace').innerHTML = `<p class="red">Diagnosis failed: ${esc(e.message)}</p>`; return; }
   const b = m.brief, d = b.diagnosis;
   inc.agentAt = inc.diagnosedAt = Date.now(); inc.dq = m.dq?.dq ?? 0; inc.teams = b.teams_paged.length;
@@ -639,6 +695,7 @@ renderScore();
 poll(); setInterval(poll, 1000);
 pollPeople(); setInterval(pollPeople, 5000);
 pollActivity(); setInterval(pollActivity, 2000);
+pollEvents(); setInterval(pollEvents, 2000);
 </script>
 </body>
 </html>

@@ -99,7 +99,7 @@ def _actions(root: str, insts: list[str], all_insts: list[str], dep: dict) -> li
         A.append(_act(2, "rollback", "Backend team",
                       f"Rollback {svc} deployment to {prev}: {ver} acquires a DB connection in /api/checkout "
                       "and never releases it.",
-                      f"git checkout {prev} && docker compose up -d --build {names}"))
+                      f"git checkout {prev} && docker compose up -d --build {names}", execute="rollback"))
         A.append(_act(3, "fix", "Backend team",
                       "Release the database connection in a finally block in /api/checkout "
                       "(try: conn = pool.acquire() ... finally: pool.release(conn)).",
@@ -111,7 +111,7 @@ def _actions(root: str, insts: list[str], all_insts: list[str], dep: dict) -> li
         A.append(_act(1, "investigate", "Database team", "Confirm the full table scan on the orders lookup.",
                       "EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 42;"))
         A.append(_act(1, "mitigate", "Database team", "Create the missing index on orders.user_id (online, no table lock).",
-                      "CREATE INDEX CONCURRENTLY idx_orders_user_id ON orders(user_id);"))
+                      "CREATE INDEX CONCURRENTLY idx_orders_user_id ON orders(user_id);", execute="add_index"))
         A.append(_act(2, "mitigate", "Backend team",
                       "Until the index is built, raise the checkout query timeout from 600ms to 2000ms.",
                       f"SLOW_QUERY_TIMEOUT_MS=2000 docker compose up -d {names}"))
@@ -144,7 +144,7 @@ def _actions(root: str, insts: list[str], all_insts: list[str], dep: dict) -> li
         A.append(_act(1, "rollback", "Backend team",
                       f"Rollback {svc} deployment to {prev}: {ver} crashes while signing login tokens "
                       "(KeyError 'kid').",
-                      f"AUTH_SERVICE_VERSION={prev} docker compose up -d {names}"))
+                      f"AUTH_SERVICE_VERSION={prev} docker compose up -d {names}", execute="rollback"))
         A.append(_act(2, "verify", "Database team",
                       "Verify the database connection pool after the rollback: utilisation should fall from "
                       "~85% back under 50%.",

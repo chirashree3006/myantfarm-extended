@@ -173,15 +173,15 @@
 
 <script>
 const API = '/api/multi', SAPI = '/api/single';
-const SVCS = ['web1','web2','web3','coord1','coord2','single-agent','agent-frontend','agent-server','agent-database','agent-users'];
+const SVCS = ['web1','web2','web3','web4','coord1','coord2','single-agent','agent-frontend','agent-server','agent-database','agent-users'];
 let scenario = 'healthy';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const log = (m, cls='') => { const d=document.createElement('div'); d.className=cls; d.textContent = new Date().toLocaleTimeString()+'  '+m; $('log').prepend(d); };
-const SC = {healthy:'ok', leak:'bad', slow_db:'warn', auth_regression:'bad'};
+const SC = {healthy:'ok', leak:'bad', slow_db:'warn', auth_regression:'bad', surge:'warn'};
 
 async function call(url, body, opts={}) {
-  const r = await fetch(url, {method: body !== undefined ? 'POST' : 'GET', headers: {'Content-Type':'application/json'},
+  const r = await fetch(url, {method: body !== undefined ? 'POST' : 'GET', headers: {'Content-Type':'application/json', 'X-Console':'ops console'},
     body: body !== undefined ? JSON.stringify(body) : undefined, signal: opts.signal});
   const up = r.headers.get('X-Upstream');
   if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0,160));
@@ -241,6 +241,7 @@ async function runSingle(){
       ${s.dq?`<details><summary class="small">actions the scorer extracted (${s.dq.extracted_actions.length})</summary><pre>${s.dq.extracted_actions.map(esc).join('\n')||'(none)'}</pre></details>`:''}
       <details><summary class="small">what the model was given</summary><pre>${esc(s.incident_description)}</pre></details>`;
     log(`C2 done in ${(s.elapsed_ms/1000).toFixed(1)}s, DQ ${s.dq?.dq ?? '-'}`);
+    shareEvent('agents', `Single agent (C2) answered: DQ ${s.dq?.dq ?? '-'}, ${s.dq?.actionable ? 'actionable' : 'not actionable'}`);
   }catch(e){ $('single').innerHTML = `<p class="bad">C2 failed: ${esc(e.message)}</p><p class="small muted">The copilot is a single service with no fallback.</p>`; log('C2 failed: '+e.message,'bad'); }
 }
 
@@ -344,7 +345,8 @@ async function loadTest(){
 }
 
 async function chaosToggle(svc, isDown){
-  try{ await call(`/chaos/${svc}/${isDown?'up':'down'}`, {seconds:60}); log(`${svc} ${isDown?'restored':'crashed for 60 s'}`, isDown?'ok':'bad'); }
+  try{ await call(`/chaos/${svc}/${isDown?'up':'down'}`, {seconds:60}); log(`${svc} ${isDown?'restored':'crashed for 60 s'}`, isDown?'ok':'bad');
+       shareEvent(isDown ? 'fix' : 'crash', `${svc} ${isDown ? 'restored' : 'crashed for 60 s (answers 503)'}`); }
   catch(e){ log(`chaos ${svc}: ${e.message}`,'bad'); }
   chaosStatus();
 }
@@ -354,10 +356,31 @@ async function chaosStatus(){
     <span>${s}</span><span class="small">${st[i].down===null?'?':st[i].down?'down '+st[i].seconds_left+'s':'up'}</span></button>`).join('');
 }
 
+/* shared control-room log: actions taken on the backend console show up here */
+let lastEvent = -1;
+async function pollEvents(){
+  try{
+    const r = await call(API + '/control/events?since_id=' + Math.max(0, lastEvent) + '&limit=40');
+    const evs = r.events || [];
+    if (lastEvent < 0){ lastEvent = evs.length ? evs.at(-1).id : 0; return; }
+    for (const e of evs){
+      lastEvent = Math.max(lastEvent, e.id);
+      if (e.source === 'ops console') continue;
+      log(`[${e.source}] ${e.text}`, e.kind === 'fault' || e.kind === 'crash' ? 'bad' : e.kind === 'fix' ? 'ok' : e.kind === 'traffic' ? 'warn' : '');
+      if (e.kind !== 'agents') status();
+    }
+  }catch(e){}
+}
+const shareEvent = (kind, text) => call(API + '/control/event', {source: 'ops console', kind, text}).catch(() => {});
+
 async function status(){
   try{
     const s = await call(API+'/control/status');
     const reps = Object.values(s).filter(x=>!x.error);
+    // follow the real state of the replicas (it may have been changed from the backend console)
+    const live = (reps.find(r => r.fault_mode && r.fault_mode !== 'none') || {}).fault_mode || 'healthy';
+    if (live !== scenario){ scenario = live; }
+    $('scen').textContent = 'scenario: ' + (scenario === 'surge' ? 'flash sale (surge)' : scenario); $('scen').className = 'pill ' + (SC[scenario] || 'warn');
     const tot = reps.reduce((a,r)=>a+r.total_requests+(r.login_attempts||0),0);
     $('lbsum').textContent = tot ? 'share of traffic: '+reps.map(r=>`${r.instance} ${Math.round(100*(r.total_requests+(r.login_attempts||0))/tot)}%`).join(', ') : '';
     $('replicas').innerHTML = Object.entries(s).map(([k,r]) => r.error ? `<div class="rep down"><div class="nm bad">${esc(k)}</div>${esc(r.error)}: load balancer routes around it</div>` : `
@@ -367,6 +390,8 @@ async function status(){
       <div class="kv"><b>db pool</b><span>${r.pool_utilization_pct}%</span>
       <b>checkouts</b><span>${r.total_requests}</span><b>sign-ins</b><span>${r.login_attempts} (${r.login_failures} failed)</span>
       <b>failures</b><span class="${r.total_failures?'bad':''}">${r.total_failures}</span>
+      <b>workers</b><span>${r.inflight}/${r.capacity} busy, ${r.rps} req/s</span>
+      <b>state</b><span class="${r.standby?'muted':r.rejected?'warn':''}">${r.standby?'standby (not in pool)':'in pool'}${r.waiting_room?', waiting room on':''}${r.rejected?`, ${r.rejected} rejected`:''}</span>
       <b>deploy</b><span>${esc(r.service)} ${esc(r.deploy_version)}</span></div></div>`).join('');
     $('gw').textContent='gateway up, coordinator '+(s.__upstream||''); $('gw').className='pill ok';
   }catch(e){ $('gw').textContent='gateway or coordinators down'; $('gw').className='pill bad'; }
@@ -384,7 +409,7 @@ async function llmMetrics(){
 }
 
 status(); llmMetrics(); chaosStatus();
-setInterval(status, 3000); setInterval(llmMetrics, 15000); setInterval(chaosStatus, 5000);
+setInterval(status, 2000); pollEvents(); setInterval(pollEvents, 2000); setInterval(llmMetrics, 15000); setInterval(chaosStatus, 5000);
 </script>
 </body>
 </html>
